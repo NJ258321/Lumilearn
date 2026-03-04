@@ -1,0 +1,159 @@
+// This is your Prisma schema file,
+// learn more about it in docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== Core Models ====================
+
+model Course {
+  id              String   @id @default(uuid())
+  name            String
+  status          String   @default("STUDYING") // STUDYING | REVIEWING | ARCHIVED
+  type            String   @default("PROFESSIONAL") // PROFESSIONAL | CROSS_MAJOR | ELECTIVE
+  examDate        DateTime?
+  reviewStartDate DateTime?
+  targetGrade     String?  // S | A | B | C
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  chapters        Chapter[]
+  studyRecords    StudyRecord[]
+  examTasks       ExamTask[]
+  mistakes        Mistake[]
+
+  @@index([status])
+  @@index([examDate])
+  @@index([createdAt])
+}
+
+model Chapter {
+  id             String   @id @default(uuid())
+  courseId       String
+  name           String
+  order          Int
+  createdAt      DateTime @default(now())
+
+  course         Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  knowledgePoints KnowledgePoint[]
+  studyRecords   StudyRecord[]
+
+  @@unique([courseId, order])
+  @@index([courseId])
+}
+
+model KnowledgePoint {
+  id           String   @id @default(uuid())
+  chapterId    String
+  name         String
+  status       String   @default("NEED_REVIEW") // MASTERED | WEAK | NEED_REVIEW | TODAY_REVIEW
+  importance   Int      @default(5) // 1-10, 老师强调+真题频率
+  masteryScore Int      @default(0) // 0-100
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  chapter      Chapter   @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  mistakes     Mistake[]
+  timeMarks    TimeMark[]
+
+  @@index([chapterId])
+  @@index([status])
+}
+
+// ==================== Study Records ====================
+
+model StudyRecord {
+  id          String   @id @default(uuid())
+  courseId    String
+  chapterId   String
+  title       String   // 录音标题
+  date        DateTime
+  audioUrl    String
+  duration    Int      // 秒
+  status      String   @default("RECORDING") // RECORDING | PROCESSING | COMPLETED | FAILED
+  notes       String   @default("")
+  createdAt   DateTime @default(now())
+
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  chapter     Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  timeMarks   TimeMark[]
+
+  @@index([courseId])
+  @@index([chapterId])
+  @@index([date])
+  @@index([status])
+}
+
+model TimeMark {
+  id              String   @id @default(uuid())
+  studyRecordId   String
+  knowledgePointId String?
+  type            String   // START | END | EMPHASIS | BOARD_CHANGE | NOTE | QUESTION
+  timestamp       Int      // 毫秒
+  pptPage         Int?     // PPT页码
+  content         String?  // 笔记内容
+  imageUrl        String?  // 图片/板书URL
+  createdAt       DateTime @default(now())
+
+  studyRecord     StudyRecord     @relation(fields: [studyRecordId], references: [id], onDelete: Cascade)
+  knowledgePoint  KnowledgePoint? @relation(fields: [knowledgePointId], references: [id])
+
+  @@index([studyRecordId])
+  @@index([knowledgePointId])
+  @@index([timestamp])
+}
+
+// ==================== Exam & Tasks ====================
+
+model ExamTask {
+  id               String   @id @default(uuid())
+  courseId         String
+  type             String   // CHAPTER_REVIEW | MOCK_EXAM | WEAK_POINT
+  scheduledDate    DateTime
+  status           String   @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | SKIPPED
+  estimatedDuration Int      // 分钟
+  round            Int      @default(1) // 1=一轮, 2=二轮, 3=三轮
+  details          String?  // JSON，存储具体任务内容
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  course           Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId])
+  @@index([scheduledDate])
+  @@index([status])
+}
+
+model Mistake {
+  id               String   @id @default(uuid())
+  courseId         String
+  knowledgePointId String
+  question         String
+  userAnswer       String
+  correctAnswer    String
+  reason           String?
+  createdAt        DateTime @default(now())
+
+  course           Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  knowledgePoint   KnowledgePoint @relation(fields: [knowledgePointId], references: [id], onDelete: Cascade)
+
+  @@index([courseId])
+  @@index([knowledgePointId])
+  @@index([createdAt])
+}
+
+// ==================== Type Constants (for reference) ====================
+// CourseStatus: STUDYING | REVIEWING | ARCHIVED
+// CourseType: PROFESSIONAL | CROSS_MAJOR | ELECTIVE
+// TargetGrade: S | A | B | C
+// KnowledgeStatus: MASTERED | WEAK | NEED_REVIEW | TODAY_REVIEW
+// StudyRecordStatus: RECORDING | PROCESSING | COMPLETED | FAILED
+// TimeMarkType: START | END | EMPHASIS | BOARD_CHANGE | NOTE | QUESTION
+// TaskType: CHAPTER_REVIEW | MOCK_EXAM | WEAK_POINT
+// TaskStatus: PENDING | IN_PROGRESS | COMPLETED | SKIPPED

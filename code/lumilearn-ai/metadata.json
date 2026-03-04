@@ -1,0 +1,8 @@
+{
+  "name": "LumiLearn AI",
+  "description": "全场景 AI 备考与复习中枢 - 您的带策略复习执行系统",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
