@@ -13,6 +13,9 @@ import knowledgePointRoutes from './routes/knowledge-points.js'
 import uploadRoutes from './routes/upload.js'
 import studyRecordRoutes from './routes/study-records.js'
 import timeMarkRoutes from './routes/time-marks.js'
+import examTaskRoutes from './routes/exam-tasks.js'
+import mistakeRoutes from './routes/mistakes.js'
+import audioRoutes from './routes/audio.js'
 
 // Initialize Express app
 const app = express()
@@ -58,6 +61,9 @@ app.use('/api/knowledge-points', knowledgePointRoutes)
 app.use('/api/study-records', studyRecordRoutes)
 app.use('/api/time-marks', timeMarkRoutes)
 app.use('/api/upload', uploadRoutes)
+app.use('/api/exam-tasks', examTaskRoutes)
+app.use('/api/mistakes', mistakeRoutes)
+app.use('/api/audio', audioRoutes)
 
 // ==================== Error Handlers ====================
 

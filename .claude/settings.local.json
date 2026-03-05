@@ -3,7 +3,13 @@
     "allow": [
       "Bash(npm start:*)",
       "Bash(npm run:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx prisma:*)",
+      "Bash(powershell:*)",
+      "Bash(node:*)",
+      "Bash(cp:*)",
+      "Bash(ffmpeg:*)"
     ]
   }
 }

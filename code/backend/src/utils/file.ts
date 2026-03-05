@@ -218,14 +218,39 @@ export interface MulterFile {
  */
 export function createMulterStorage() {
   return {
-    destination: (_req: unknown, _file: unknown, cb: (error: Error | null, destination: string) => void) => {
-      cb(null, UPLOAD_DIR)
-    },
-    filename: (_req: unknown, file: MulterFile, cb: (error: Error | null, filename: string) => void) => {
+    _handleFile: function (_req: any, file: any, cb: (error: Error | null, info?: any) => void) {
       const uniqueName = generateUniqueFilename(file.originalname, file.fieldname)
-      cb(null, uniqueName)
+      const dest = UPLOAD_DIR
+      const finalPath = `${dest}/${uniqueName}`
+
+      // 确保目录存在
+      import('fs').then(fs => {
+        if (!fs.existsSync(dest)) {
+          fs.mkdirSync(dest, { recursive: true })
+        }
+
+        const outStream = fs.createWriteStream(finalPath)
+        file.stream.pipe(outStream)
+        outStream.on('error', cb)
+        outStream.on('finish', function () {
+          cb(null, {
+            destination: dest,
+            filename: uniqueName,
+            path: finalPath,
+            size: file.size,
+            mimetype: file.mimetype,
+            originalname: file.originalname,
+            fieldname: file.fieldname
+          })
+        })
+      })
+    },
+    _removeFile: function (_req: any, file: any, cb: (error: Error | null) => void) {
+      import('fs').then(fs => {
+        fs.unlink(file.path, cb)
+      })
     }
-  }
+  } as any
 }
 
 /**

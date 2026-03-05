@@ -1,6 +1,7 @@
-import { Router } from 'express'
+import { Router, type Request, type Response } from 'express'
 import { body, param, query } from 'express-validator'
 import { validate } from '../middleware/validator.js'
+import prisma from '../lib/prisma.js'
 
 const router = Router()
 
@@ -11,12 +12,52 @@ router.get('/', [
   query('round').optional().isInt({ min: 1, max: 3 }),
   query('date').optional().isISO8601(),
   validate
-], async (req, res) => {
+], async (req: Request, res: Response): Promise<void> => {
   try {
     const { courseId, status, round, date } = req.query
 
-    // TODO: 实现数据库查询
-    const examTasks = []
+    const where: Record<string, unknown> = {}
+
+    if (courseId) {
+      where.courseId = courseId as string
+    }
+
+    if (status) {
+      where.status = status as string
+    }
+
+    if (round) {
+      where.round = parseInt(round as string, 10)
+    }
+
+    if (date) {
+      const targetDate = new Date(date as string)
+      const startOfDay = new Date(targetDate)
+      startOfDay.setHours(0, 0, 0, 0)
+      const endOfDay = new Date(targetDate)
+      endOfDay.setHours(23, 59, 59, 999)
+
+      where.scheduledDate = {
+        gte: startOfDay,
+        lte: endOfDay
+      }
+    }
+
+    const examTasks = await prisma.examTask.findMany({
+      where,
+      include: {
+        course: {
+          select: {
+            id: true,
+            name: true,
+            status: true
+          }
+        }
+      },
+      orderBy: {
+        scheduledDate: 'asc'
+      }
+    })
 
     res.json({
       success: true,
@@ -32,15 +73,33 @@ router.get('/', [
 })
 
 // GET /api/exam-tasks/today - 获取今日任务
-router.get('/today', [], async (req, res) => {
+router.get('/today', [], async (_req: Request, res: Response): Promise<void> => {
   try {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const tomorrow = new Date(today)
     tomorrow.setDate(tomorrow.getDate() + 1)
 
-    // TODO: 实现数据库查询
-    const todayTasks = []
+    const todayTasks = await prisma.examTask.findMany({
+      where: {
+        scheduledDate: {
+          gte: today,
+          lt: tomorrow
+        }
+      },
+      include: {
+        course: {
+          select: {
+            id: true,
+            name: true,
+            status: true
+          }
+        }
+      },
+      orderBy: {
+        scheduledDate: 'asc'
+      }
+    })
 
     res.json({
       success: true,
@@ -59,18 +118,30 @@ router.get('/today', [], async (req, res) => {
 router.get('/:id', [
   param('id').isUUID(),
   validate
-], async (req, res) => {
+], async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params
+    const { id } = req.params as { id: string }
 
-    // TODO: 实现数据库查询
-    const examTask = null
+    const examTask = await prisma.examTask.findUnique({
+      where: { id },
+      include: {
+        course: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            examDate: true
+          }
+        }
+      }
+    })
 
     if (!examTask) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         error: 'Exam task not found'
       })
+      return
     }
 
     res.json({
@@ -94,12 +165,43 @@ router.post('/', [
   body('estimatedDuration').isInt({ min: 1 }).withMessage('Duration must be positive'),
   body('round').optional().isInt({ min: 1, max: 3 }),
   validate
-], async (req, res) => {
+], async (req: Request, res: Response): Promise<void> => {
   try {
     const { courseId, type, scheduledDate, estimatedDuration, round = 1, details } = req.body
 
-    // TODO: 实现数据库创建
-    const examTask = null
+    // Verify course exists
+    const course = await prisma.course.findUnique({
+      where: { id: courseId }
+    })
+
+    if (!course) {
+      res.status(404).json({
+        success: false,
+        error: 'Course not found'
+      })
+      return
+    }
+
+    const examTask = await prisma.examTask.create({
+      data: {
+        courseId,
+        type,
+        scheduledDate: new Date(scheduledDate),
+        estimatedDuration,
+        round,
+        details: details ? JSON.stringify(details) : null,
+        status: 'PENDING'
+      },
+      include: {
+        course: {
+          select: {
+            id: true,
+            name: true,
+            status: true
+          }
+        }
+      }
+    })
 
     res.status(201).json({
       success: true,
@@ -114,25 +216,56 @@ router.post('/', [
   }
 })
 
-// PUT /api/exam-tasks/:id - 更新任务状态
+// PUT /api/exam-tasks/:id - 更新任务
 router.put('/:id', [
   param('id').isUUID(),
   body('status').optional().isIn(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'SKIPPED']),
+  body('type').optional().isIn(['CHAPTER_REVIEW', 'MOCK_EXAM', 'WEAK_POINT']),
+  body('scheduledDate').optional().isISO8601(),
+  body('estimatedDuration').optional().isInt({ min: 1 }),
+  body('round').optional().isInt({ min: 1, max: 3 }),
+  body('details').optional(),
   validate
-], async (req, res) => {
+], async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params
-    const { status } = req.body
+    const { id } = req.params as { id: string }
+    const { status, type, scheduledDate, estimatedDuration, round, details } = req.body
 
-    // TODO: 实现数据库更新
-    const examTask = null
+    // Check if task exists
+    const existingTask = await prisma.examTask.findUnique({
+      where: { id }
+    })
 
-    if (!examTask) {
-      return res.status(404).json({
+    if (!existingTask) {
+      res.status(404).json({
         success: false,
         error: 'Exam task not found'
       })
+      return
     }
+
+    const updateData: Record<string, unknown> = {}
+
+    if (status) updateData.status = status
+    if (type) updateData.type = type
+    if (scheduledDate) updateData.scheduledDate = new Date(scheduledDate)
+    if (estimatedDuration) updateData.estimatedDuration = estimatedDuration
+    if (round) updateData.round = round
+    if (details !== undefined) updateData.details = typeof details === 'string' ? details : JSON.stringify(details)
+
+    const examTask = await prisma.examTask.update({
+      where: { id },
+      data: updateData,
+      include: {
+        course: {
+          select: {
+            id: true,
+            name: true,
+            status: true
+          }
+        }
+      }
+    })
 
     res.json({
       success: true,
@@ -151,12 +284,37 @@ router.put('/:id', [
 router.patch('/:id/complete', [
   param('id').isUUID(),
   validate
-], async (req, res) => {
+], async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params
+    const { id } = req.params as { id: string }
 
-    // TODO: 实现数据库更新
-    const examTask = null
+    const existingTask = await prisma.examTask.findUnique({
+      where: { id }
+    })
+
+    if (!existingTask) {
+      res.status(404).json({
+        success: false,
+        error: 'Exam task not found'
+      })
+      return
+    }
+
+    const examTask = await prisma.examTask.update({
+      where: { id },
+      data: {
+        status: 'COMPLETED'
+      },
+      include: {
+        course: {
+          select: {
+            id: true,
+            name: true,
+            status: true
+          }
+        }
+      }
+    })
 
     res.json({
       success: true,
@@ -175,12 +333,25 @@ router.patch('/:id/complete', [
 router.delete('/:id', [
   param('id').isUUID(),
   validate
-], async (req, res) => {
+], async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params
+    const { id } = req.params as { id: string }
 
-    // TODO: 实现数据库删除
-    await null
+    const existingTask = await prisma.examTask.findUnique({
+      where: { id }
+    })
+
+    if (!existingTask) {
+      res.status(404).json({
+        success: false,
+        error: 'Exam task not found'
+      })
+      return
+    }
+
+    await prisma.examTask.delete({
+      where: { id }
+    })
 
     res.json({
       success: true,

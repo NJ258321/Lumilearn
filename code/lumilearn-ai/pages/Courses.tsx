@@ -1,8 +1,9 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Search, MoreHorizontal, ChevronUp, ChevronDown, Plus, Edit2, RefreshCw, Info, Trash2, X, Archive, BookOpen, Clock, CalendarRange, Network, Layers, Zap, Book } from 'lucide-react';
+import { Search, MoreHorizontal, ChevronUp, ChevronDown, Plus, Edit2, RefreshCw, Info, Trash2, X, Archive, BookOpen, Clock, CalendarRange, Network, Layers, Zap, Book, Loader2 } from 'lucide-react';
 import * as d3 from 'd3';
 import { MOCK_COURSES } from '../constants';
 import { AppView, Course } from '../types';
+import { coursesApi, type Course as ApiCourse } from '../services/api';
 
 interface CoursesProps {
   onNavigate: (view: AppView, courseId?: string) => void;
@@ -69,7 +70,37 @@ type SheetMode = 'MENU' | 'RENAME' | 'STATUS' | 'DELETE' | 'INFO';
 
 const Courses: React.FC<CoursesProps> = ({ onNavigate }) => {
   const [courses, setCourses] = useState<Course[]>(MOCK_COURSES);
+  const [isLoading, setIsLoading] = useState(true);
   const [isPanelOpen, setIsPanelOpen] = useState(true);
+
+  // Fetch courses from API on mount
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        setIsLoading(true);
+        const response = await coursesApi.getAll();
+        if (response.success && response.data && response.data.length > 0) {
+          // Transform API data to match frontend format
+          const transformedCourses: Course[] = response.data.map(c => ({
+            id: c.id,
+            name: c.name,
+            status: c.status === 'REVIEWING' ? 'reviewing' : (c.status === 'STUDYING' ? 'studying' : 'archived'),
+            type: c.type === 'PROFESSIONAL' ? 'major' : 'elective',
+            semester: '2024-2025 秋季',
+            lastReview: c.updatedAt ? new Date(c.updatedAt).toLocaleDateString('zh-CN') : undefined
+          }));
+          setCourses(transformedCourses);
+        }
+      } catch (err) {
+        console.error('Failed to fetch courses:', err);
+        // Keep using mock data on error
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCourses();
+  }, []);
   
   // Sheet State
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
