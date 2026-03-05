@@ -1,9 +1,8 @@
-import React, { useMemo, useState, useRef, useEffect } from 'react';
+import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { Search, MoreHorizontal, ChevronUp, ChevronDown, Plus, Edit2, RefreshCw, Info, Trash2, X, Archive, BookOpen, Clock, CalendarRange, Network, Layers, Zap, Book, Loader2 } from 'lucide-react';
 import * as d3 from 'd3';
-import { MOCK_COURSES } from '../constants';
 import { AppView, Course } from '../types';
-import { coursesApi, type Course as ApiCourse } from '../services/api';
+import { getCourseList } from '../src/api/courses';
 
 interface CoursesProps {
   onNavigate: (view: AppView, courseId?: string) => void;
@@ -69,38 +68,10 @@ const CONFIG = {
 type SheetMode = 'MENU' | 'RENAME' | 'STATUS' | 'DELETE' | 'INFO';
 
 const Courses: React.FC<CoursesProps> = ({ onNavigate }) => {
-  const [courses, setCourses] = useState<Course[]>(MOCK_COURSES);
-  const [isLoading, setIsLoading] = useState(true);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(true);
-
-  // Fetch courses from API on mount
-  useEffect(() => {
-    const fetchCourses = async () => {
-      try {
-        setIsLoading(true);
-        const response = await coursesApi.getAll();
-        if (response.success && response.data && response.data.length > 0) {
-          // Transform API data to match frontend format
-          const transformedCourses: Course[] = response.data.map(c => ({
-            id: c.id,
-            name: c.name,
-            status: c.status === 'REVIEWING' ? 'reviewing' : (c.status === 'STUDYING' ? 'studying' : 'archived'),
-            type: c.type === 'PROFESSIONAL' ? 'major' : 'elective',
-            semester: '2024-2025 秋季',
-            lastReview: c.updatedAt ? new Date(c.updatedAt).toLocaleDateString('zh-CN') : undefined
-          }));
-          setCourses(transformedCourses);
-        }
-      } catch (err) {
-        console.error('Failed to fetch courses:', err);
-        // Keep using mock data on error
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchCourses();
-  }, []);
   
   // Sheet State
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
@@ -121,13 +92,35 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate }) => {
   const [forceLinks, setForceLinks] = useState<ForceLink[]>([]);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
 
-  // Data Splitting
-  const reviewingCourses = useMemo(() => 
-    courses.filter(c => c.status === 'reviewing').sort((a, b) => (b.lastReview || '').localeCompare(a.lastReview || '')), 
+  // Fetch Courses from API
+  const fetchCourses = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await getCourseList();
+      if (response.success && response.data) {
+        setCourses(response.data);
+      } else {
+        setError(response.error || '加载课程失败');
+      }
+    } catch (err) {
+      setError('网络错误，请检查连接');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCourses();
+  }, [fetchCourses]);
+
+  // Data Splitting (后端返回大写status)
+  const reviewingCourses = useMemo(() =>
+    courses.filter(c => c.status === 'REVIEWING').sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
   [courses]);
 
-  const studyingCourses = useMemo(() => 
-    courses.filter(c => c.status === 'studying'), 
+  const studyingCourses = useMemo(() =>
+    courses.filter(c => c.status === 'STUDYING'),
   [courses]);
 
   // ---------------------------------------------------------------------------

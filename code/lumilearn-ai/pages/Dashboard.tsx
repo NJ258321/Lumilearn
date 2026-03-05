@@ -1,170 +1,99 @@
-import React, { useState, useEffect } from 'react';
-import { Clock, Play, CheckCircle2, Zap, Flame, X, AlertTriangle, Moon, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Clock, Play, CheckCircle2, Zap, Flame, X, AlertTriangle, Moon, Loader2, RefreshCw, ChevronRight, Trash2 } from 'lucide-react';
 import { MOCK_TASK_GROUPS } from '../constants';
 import { AppView, Task, TaskGroup } from '../types';
 import { generateDailyPlan } from '../services/geminiService';
-import { examTasksApi, coursesApi, type ExamTask, type Course } from '../services/api';
+import { getStudyRecordList, deleteStudyRecord, searchStudyRecords } from '../src/api/studyRecords';
+import type { StudyRecord } from '../types';
 
 interface DashboardProps {
   onNavigate: (view: AppView, data?: any) => void;
 }
 
-// Helper to transform API data to TaskGroup format
-const transformApiDataToTaskGroups = (tasks: ExamTask[], courses: Course[]): TaskGroup[] => {
-  if (!tasks || tasks.length === 0) {
-    return MOCK_TASK_GROUPS;
-  }
-
-  // Group tasks by course
-  const taskMap = new Map<string, TaskGroup>();
-
-  for (const task of tasks) {
-    const course = courses.find(c => c.id === task.courseId);
-    const courseName = course?.name || '未知课程';
-
-    if (!taskMap.has(task.courseId)) {
-      taskMap.set(task.courseId, {
-        courseId: task.courseId,
-        courseName,
-        tag: task.round === 1 ? '一轮复习' : (task.round === 2 ? '二轮突破' : '三轮冲刺'),
-        tagColor: task.round === 1 ? 'orange' : (task.round === 2 ? 'blue' : 'red'),
-        progress: '0/0',
-        tasks: []
-      });
-    }
-
-    const group = taskMap.get(task.courseId)!;
-
-    // Add task
-    group.tasks.push({
-      id: task.id,
-      courseName,
-      title: task.details ? JSON.parse(task.details).title || getTaskTitle(task) : getTaskTitle(task),
-      duration: `${task.estimatedDuration}min`,
-      status: task.status === 'COMPLETED' ? 'completed' : (task.status === 'IN_PROGRESS' ? 'in-progress' : 'pending'),
-      type: getTaskType(task.type),
-      tag: ''
-    });
-  }
-
-  // Update progress
-  for (const group of taskMap.values()) {
-    const completed = group.tasks.filter(t => t.status === 'completed').length;
-    group.progress = `${completed}/${group.tasks.length}`;
-  }
-
-  return Array.from(taskMap.values());
-};
-
-const getTaskTitle = (task: ExamTask): string => {
-  switch (task.type) {
-    case 'CHAPTER_REVIEW':
-      return '章节复习';
-    case 'MOCK_EXAM':
-      return '模拟考试';
-    case 'WEAK_POINT':
-      return '薄弱点突破';
-    default:
-      return '学习任务';
-  }
-};
-
-const getTaskType = (type: string): 'review' | 'quiz' | 'paper' | 'mistake' => {
-  switch (type) {
-    case 'MOCK_EXAM':
-      return 'paper';
-    case 'WEAK_POINT':
-      return 'mistake';
-    default:
-      return 'review';
-  }
-};
-
-// Helper to get countdown data from courses
-const getCountdownData = (courses: Course[]) => {
-  const now = new Date();
-  const upcomingExams = courses
-    .filter(c => c.examDate && new Date(c.examDate) > now)
-    .map(c => ({
-      name: c.name,
-      days: Math.ceil((new Date(c.examDate!).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-    }))
-    .sort((a, b) => a.days - b.days)
-    .slice(0, 3);
-
-  return upcomingExams;
-};
-
 const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const [taskGroups, setTaskGroups] = useState<TaskGroup[]>(MOCK_TASK_GROUPS);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [showWarning, setShowWarning] = useState(true);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [countdownData, setCountdownData] = useState<{ name: string; days: number }[]>([
-    { name: '数据结构期末', days: 3 },
-    { name: '摄影测量', days: 6 }
-  ]);
 
-  // Fetch data from API on mount
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
+  // Study Records State
+  const [studyRecords, setStudyRecords] = useState<StudyRecord[]>([]);
+  const [recordsLoading, setRecordsLoading] = useState(false);
+  const [recordsError, setRecordsError] = useState<string | null>(null);
+  const [showRecords, setShowRecords] = useState(false);
+  const [filterCourseId, setFilterCourseId] = useState<string>('');
+  const [searchKeyword, setSearchKeyword] = useState('');
 
-        // Fetch today's tasks and courses in parallel
-        const [tasksResponse, coursesResponse] = await Promise.all([
-          examTasksApi.getToday(),
-          coursesApi.getAll()
-        ]);
+  // Fetch Study Records
+  const fetchStudyRecords = useCallback(async () => {
+    setRecordsLoading(true);
+    setRecordsError(null);
+    try {
+      const params: Record<string, string> = { pageSize: '10' };
+      if (filterCourseId) params.courseId = filterCourseId;
+      if (searchKeyword) params.keyword = searchKeyword;
 
-        if (tasksResponse.success && tasksResponse.data) {
-          const groups = transformApiDataToTaskGroups(
-            tasksResponse.data,
-            coursesResponse.success ? coursesResponse.data! : []
-          );
-          setTaskGroups(groups);
-        }
-
-        if (coursesResponse.success && coursesResponse.data) {
-          const countdown = getCountdownData(coursesResponse.data);
-          if (countdown.length > 0) {
-            setCountdownData(countdown);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch dashboard data:', err);
-        setError('加载数据失败，使用演示数据');
-        // Keep using mock data on error
-      } finally {
-        setIsLoading(false);
+      const response = await getStudyRecordList(params);
+      if (response.success && response.data) {
+        setStudyRecords(response.data || []);
+      } else {
+        setRecordsError(response.error || '加载学习记录失败');
       }
-    };
+    } catch (err) {
+      setRecordsError('网络错误，请检查连接');
+    } finally {
+      setRecordsLoading(false);
+    }
+  }, [filterCourseId, searchKeyword]);
 
-    fetchData();
-  }, []);
+  // Initial fetch
+  useEffect(() => {
+    if (showRecords) {
+      fetchStudyRecords();
+    }
+  }, [showRecords, fetchStudyRecords]);
+
+  // Delete Record
+  const handleDeleteRecord = async (id: string) => {
+    setRecordsLoading(true);
+    try {
+      const response = await deleteStudyRecord(id);
+      if (response.success) {
+        fetchStudyRecords();
+      } else {
+        setRecordsError(response.error || '删除失败');
+      }
+    } catch (err) {
+      setRecordsError('删除失败');
+    } finally {
+      setRecordsLoading(false);
+    }
+  };
+
+  // Format duration
+  const formatDuration = (seconds?: number) => {
+    if (!seconds) return '--:--';
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  // Format date
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return `${date.getMonth() + 1}/${date.getDate()}`;
+  };
 
   const handleOptimize = async () => {
     setIsOptimizing(true);
-    try {
-      // Call AI to optimize plan
-      await generateDailyPlan([]);
-      // Fetch fresh data after optimization
-      const response = await examTasksApi.getToday();
-      if (response.success && response.data) {
-        const coursesResponse = await coursesApi.getAll();
-        const groups = transformApiDataToTaskGroups(
-          response.data,
-          coursesResponse.success ? coursesResponse.data! : []
-        );
-        setTaskGroups(groups);
-      }
-    } catch (err) {
-      console.error('Failed to optimize:', err);
-    } finally {
-      setIsOptimizing(false);
-    }
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    await generateDailyPlan([]); 
+    // Simulate reorder: move the last item to first
+    const newGroups = [...taskGroups];
+    const last = newGroups.pop();
+    if (last) newGroups.unshift(last);
+    setTaskGroups(newGroups);
+    setIsOptimizing(false);
   };
 
   const handleTaskClick = (task: Task) => {
@@ -183,7 +112,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       if (courseName.includes('数据结构')) return {
           color: 'red',
           bg: 'bg-red-50',
-          border: 'border-red-500',
+          border: 'border-red-500', 
           text: 'text-red-600',
           gradient: 'from-red-500 to-orange-500',
           shadow: 'shadow-[0_0_15px_rgba(239,68,68,0.3)]'
@@ -220,19 +149,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       let period = 'Morning Sprint';
       if (idx === 1) { time = '14:00'; period = 'Deep Work'; }
       if (idx === 2) { time = '19:30'; period = 'Evening Review'; }
-
+      
       return { ...group, time, period };
   });
 
-  // Get today's date
-  const today = new Date();
-  const dateStr = `${today.getMonth() + 1}月${today.getDate()}日`;
-  const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-  const dayName = dayNames[today.getDay()];
-
   return (
     <div className="flex flex-col h-screen bg-[#F4F6F9] font-sans overflow-hidden">
-
+      
       {/* =======================
           1. Glass Header
           ======================= */}
@@ -241,36 +164,48 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           <div>
             <div className="text-xs font-bold text-blue-500 tracking-widest mb-1 uppercase">Dashboard</div>
             <div className="text-3xl font-extrabold text-slate-800 tracking-tight flex items-baseline leading-none">
-              {dateStr} <span className="text-sm font-normal text-slate-400 ml-2">{dayName}</span>
+              Jan 25 <span className="text-sm font-normal text-slate-400 ml-2">Sunday</span>
             </div>
             <div className="flex space-x-1.5 mt-3">
               {[...Array(7)].map((_, i) => (
-                <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === today.getDay() ? 'w-6 bg-orange-400 shadow-[0_0_8px_rgba(251,146,60,0.6)]' : 'w-1.5 bg-slate-200'}`}></div>
+                <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === 6 ? 'w-6 bg-orange-400 shadow-[0_0_8px_rgba(251,146,60,0.6)]' : 'w-1.5 bg-slate-200'}`}></div>
               ))}
             </div>
           </div>
 
           <div className="flex flex-col space-y-2 items-end pt-1">
-            {/* Countdown Panel - Dynamic from API */}
-            {countdownData[0] && (
-              <div className="bg-white/90 backdrop-blur-md border border-red-100 rounded-2xl px-4 py-3 shadow-lg flex items-center space-x-4 w-[170px] relative overflow-hidden active:scale-95 transition-transform cursor-pointer">
-                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-500"></div>
-                <div className="flex-1">
-                  <div className="text-xs text-slate-500 font-bold mb-0.5">{countdownData[0].name}</div>
-                  <div className="text-2xl font-black text-slate-800 flex items-baseline leading-none">
-                    {countdownData[0].days} <span className="text-xs font-bold text-red-500 ml-1">天!</span>
-                  </div>
-                </div>
-                <Flame size={24} className="text-red-500 animate-pulse" fill="#EF4444" fillOpacity={0.2} />
-              </div>
-            )}
+            {/* Recent Study Records Button */}
+            <button
+                onClick={() => setShowRecords(!showRecords)}
+                className={`bg-white/90 backdrop-blur-md border rounded-2xl px-4 py-2 shadow-lg flex items-center space-x-2 active:scale-95 transition-transform ${
+                    showRecords ? 'border-blue-300' : 'border-slate-100'
+                }`}
+            >
+                <Clock size={14} className={showRecords ? 'text-blue-600' : 'text-slate-500'} />
+                <span className="text-xs font-bold text-slate-600">学习记录</span>
+                {studyRecords.length > 0 && (
+                    <span className="bg-blue-100 text-blue-600 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                        {studyRecords.length}
+                    </span>
+                )}
+            </button>
 
-            {countdownData[1] && (
-              <div className="bg-white/60 backdrop-blur-sm border border-slate-100 rounded-xl px-3 py-2 flex items-center justify-between w-[140px] shadow-sm">
-                 <div className="text-[10px] font-bold text-slate-500">{countdownData[1].name}</div>
-                 <div className="text-sm font-black text-purple-600">{countdownData[1].days} <span className="text-[9px] font-normal text-slate-400">天</span></div>
+            {/* Enlarged Countdown Panel */}
+            <div className="bg-white/90 backdrop-blur-md border border-red-100 rounded-2xl px-4 py-3 shadow-lg flex items-center space-x-4 w-[170px] relative overflow-hidden active:scale-95 transition-transform cursor-pointer">
+              <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-500"></div>
+              <div className="flex-1">
+                <div className="text-xs text-slate-500 font-bold mb-0.5">数据结构期末</div>
+                <div className="text-2xl font-black text-slate-800 flex items-baseline leading-none">
+                  3 <span className="text-xs font-bold text-red-500 ml-1">天!</span>
+                </div>
               </div>
-            )}
+              <Flame size={24} className="text-red-500 animate-pulse" fill="#EF4444" fillOpacity={0.2} />
+            </div>
+            
+            <div className="bg-white/60 backdrop-blur-sm border border-slate-100 rounded-xl px-3 py-2 flex items-center justify-between w-[140px] shadow-sm">
+               <div className="text-[10px] font-bold text-slate-500">摄影测量</div>
+               <div className="text-sm font-black text-purple-600">6 <span className="text-[9px] font-normal text-slate-400">天</span></div>
+            </div>
           </div>
         </div>
       </div>
@@ -279,57 +214,38 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           2. Timeline Stream
           ======================= */}
       <div className="flex-1 overflow-y-auto relative z-10 pb-32 scrollbar-hide">
-
+        
         {/* Sticky Action Bar */}
         <div className="flex justify-between items-center px-6 mb-4 sticky top-0 bg-[#F4F6F9]/95 backdrop-blur z-30 py-3 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
           <h2 className="text-lg font-bold text-slate-700">今日安排</h2>
-          <button
+          <button 
             onClick={handleOptimize}
             disabled={isOptimizing}
             className="flex items-center space-x-1.5 bg-white border border-slate-200 px-3 py-1.5 rounded-full shadow-sm active:scale-95 transition-transform"
           >
-            {isOptimizing ? (
-              <Loader2 size={14} className="text-slate-400 animate-spin" />
-            ) : (
-              <Zap size={14} className="text-yellow-500" fill="#F59E0B" />
-            )}
+            <Zap size={14} className={isOptimizing ? "text-slate-400" : "text-yellow-500"} fill={isOptimizing ? "none" : "#F59E0B"} />
             <span className="text-xs font-bold text-slate-600">{isOptimizing ? '计算中...' : '智能重排'}</span>
           </button>
         </div>
 
-        {/* Loading State */}
-        {isLoading && (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 size={24} className="text-blue-500 animate-spin mr-2" />
-            <span className="text-sm text-slate-500">加载中...</span>
-          </div>
-        )}
-
-        {/* Error Notice */}
-        {error && (
-          <div className="mx-4 mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-            {error}
-          </div>
-        )}
-
         <div className="relative px-4 min-h-[600px]">
-
+          
           {/* --- The Visual Spine (Left) --- */}
           {/* Main vertical line */}
           <div className="absolute left-[64px] top-4 bottom-0 w-[2px] bg-slate-200"></div>
-
+          
           {/* Gradient Overlay for Past (Simulated) */}
           <div className="absolute left-[64px] top-4 h-[250px] w-[2px] bg-gradient-to-b from-blue-400 via-blue-200 to-slate-200 z-10"></div>
 
 
           {/* --- Render Timeline Groups --- */}
-          {!isLoading && timelineGroups.map((group, index) => {
+          {timelineGroups.map((group, index) => {
               const theme = getTheme(group.courseName);
               const isActiveGroup = index === 0;
 
               return (
                 <div key={group.courseId} className={`relative mb-12 transition-all duration-500 animate-in slide-in-from-bottom-8 fade-in`} style={{ animationDelay: `${index * 100}ms` }}>
-
+                    
                     {/* 1. Time Column (Left) */}
                     <div className="absolute left-0 top-0 w-[50px] text-right pr-2">
                         <span className={`block text-sm font-bold font-mono leading-none ${isActiveGroup ? 'text-slate-800' : 'text-slate-400'}`}>{group.time}</span>
@@ -342,7 +258,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                          {/* Outer Ring */}
                         <div className={`w-4 h-4 rounded-full border-2 bg-white flex items-center justify-center ${isActiveGroup ? theme.border : 'border-slate-300'}`}>
                              {/* Inner Dot */}
-                            <div className={`w-1.5 h-1.5 rounded-full ${isActiveGroup ? theme.bg.replace('bg-', 'bg-').replace('-50', '-500') : 'bg-slate-300'}`}></div>
+                             <div className={`w-1.5 h-1.5 rounded-full ${isActiveGroup ? theme.bg.replace('bg-', 'bg-').replace('-50', '-500') : 'bg-slate-300'}`}></div>
                         </div>
                         {/* Ping Effect for Active */}
                         {isActiveGroup && (
@@ -365,14 +281,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                             {group.tasks.map((task) => {
                                 const isCompleted = task.status === 'completed';
                                 const isInProgress = task.status === 'in-progress';
-
+                                
                                 let cardStyle = "bg-white border-slate-100";
                                 if (isInProgress) cardStyle = `bg-white border-l-4 ${theme.border} shadow-[0_8px_30px_rgba(0,0,0,0.06)] scale-[1.02]`;
                                 else if (isCompleted) cardStyle = "bg-slate-50 border-slate-100 opacity-60 grayscale";
                                 else cardStyle = "bg-white border-slate-100 shadow-sm opacity-90";
 
                                 return (
-                                    <div
+                                    <div 
                                         key={task.id}
                                         onClick={() => handleTaskClick(task)}
                                         className={`relative rounded-xl p-3.5 border transition-all active:scale-[0.98] ${cardStyle}`}
@@ -419,7 +335,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                     <span className="text-xs font-bold">Bedtime</span>
                 </div>
           </div>
-
+          
         </div>
       </div>
 
@@ -434,12 +350,107 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 </div>
                 <span className="text-xs text-slate-700 font-bold">进度滞后 15%，建议调整</span>
             </div>
-            <button
+            <button 
                 onClick={() => setShowWarning(false)}
                 className="text-slate-400 hover:text-slate-600 active:scale-90 p-1"
             >
                 <X size={16} />
             </button>
+        </div>
+      )}
+
+      {/* Study Records Bottom Sheet */}
+      {showRecords && (
+        <div className="fixed inset-0 z-[90] flex items-end justify-center">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowRecords(false)}></div>
+            <div className="bg-white w-full max-w-md rounded-t-[32px] p-5 z-[100] shadow-2xl animate-in slide-in-from-bottom h-[70vh] flex flex-col">
+                {/* Header */}
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-black text-slate-800">学习记录</h3>
+                    <button onClick={() => setShowRecords(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                {/* Search & Filter */}
+                <div className="flex space-x-2 mb-4">
+                    <input
+                        type="text"
+                        value={searchKeyword}
+                        onChange={(e) => setSearchKeyword(e.target.value)}
+                        placeholder="搜索记录..."
+                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                        onClick={fetchStudyRecords}
+                        disabled={recordsLoading}
+                        className="p-2 bg-blue-100 text-blue-600 rounded-xl hover:bg-blue-200 disabled:opacity-50"
+                    >
+                        {recordsLoading ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
+                    </button>
+                </div>
+
+                {/* Error Message */}
+                {recordsError && (
+                    <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm mb-3">
+                        {recordsError}
+                    </div>
+                )}
+
+                {/* Records List */}
+                <div className="flex-1 overflow-y-auto space-y-3">
+                    {recordsLoading && studyRecords.length === 0 ? (
+                        <div className="flex items-center justify-center py-8">
+                            <Loader2 className="animate-spin text-blue-600" size={24} />
+                        </div>
+                    ) : studyRecords.length === 0 ? (
+                        <div className="text-center py-8 text-slate-400">
+                            <Clock size={32} className="mx-auto mb-2 opacity-50" />
+                            <p className="text-sm">暂无学习记录</p>
+                            <p className="text-xs mt-1">开始录制你的第一节课吧</p>
+                        </div>
+                    ) : (
+                        studyRecords.map((record) => (
+                            <div
+                                key={record.id}
+                                className="bg-slate-50 rounded-xl p-4 border border-slate-100 hover:border-blue-200 transition-colors"
+                            >
+                                <div className="flex items-start justify-between mb-2">
+                                    <div className="flex-1 min-w-0">
+                                        <h4 className="text-sm font-bold text-slate-700 truncate">{record.title}</h4>
+                                        <div className="flex items-center space-x-2 mt-1 text-xs text-slate-400">
+                                            <Clock size={12} />
+                                            <span>{formatDate(record.recordedAt)}</span>
+                                            <span>·</span>
+                                            <span>{formatDuration(record.duration)}</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleDeleteRecord(record.id)}
+                                        className="p-1.5 text-slate-300 hover:text-red-500"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
+                                {record.notes && (
+                                    <p className="text-xs text-slate-500 line-clamp-2 mt-2">{record.notes}</p>
+                                )}
+                                <button
+                                    onClick={() => {
+                                        setShowRecords(false);
+                                        onNavigate(AppView.TIME_MACHINE, record);
+                                    }}
+                                    className="mt-3 w-full py-2 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 flex items-center justify-center"
+                                >
+                                    <Play size={12} className="mr-1" />
+                                    进入时光机
+                                    <ChevronRight size={14} />
+                                </button>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
         </div>
       )}
 

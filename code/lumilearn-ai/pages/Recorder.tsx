@@ -1,7 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
-import { Mic, Square, Camera, Flag, Upload, ArrowLeft, ChevronDown, Play, Zap, Type, X, Search, Check } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Mic, Square, Camera, Flag, Upload, ArrowLeft, ChevronDown, Play, Zap, Type, X, Search, Check, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { MOCK_COURSES } from '../constants';
+import { createStudyRecord } from '../src/api/studyRecords';
+import { uploadAudio, uploadImage } from '../src/api/upload';
 
 interface RecorderProps {
   onBack: () => void;
@@ -11,14 +13,115 @@ interface RecorderProps {
 const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
   // 修改初始状态：默认为暂停，计时从 0 开始
   const [isRecording, setIsRecording] = useState(false);
-  const [duration, setDuration] = useState(0); 
+  const [duration, setDuration] = useState(0);
   const [imageCount] = useState(3);
   const [noteText, setNoteText] = useState('');
-  
+
   // 课程选择状态
   const [courseName, setCourseName] = useState(initialCourseName || "遥感原理与应用");
   const [showPicker, setShowPicker] = useState(false);
   const [searchText, setSearchText] = useState('');
+
+  // API State
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Save State
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [recordTitle, setRecordTitle] = useState('');
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+  const [recordedImages, setRecordedImages] = useState<string[]>([]);
+
+  // Refs
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+
+  // Save Study Record Handler
+  const handleSaveRecord = async () => {
+    if (!recordTitle.trim()) {
+      setError('请输入记录标题');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Get course ID (using mock data for now)
+      const course = MOCK_COURSES.find(c => c.name === courseName);
+      const courseId = course?.id || '550e8400-e29b-41d4-a716-446655440001';
+
+      const response = await createStudyRecord({
+        courseId,
+        chapterId: '550e8400-e29b-41d4-a716-446655440002', // 使用测试章节ID
+        title: recordTitle,
+        date: new Date().toISOString(),
+        audioUrl: recordedAudioUrl || undefined,
+        notes: noteText || undefined,
+        duration: duration,
+        status: 'RECORDING',
+      });
+
+      if (response.success) {
+        setSuccess('学习记录保存成功！');
+        setShowSaveConfirm(false);
+        // Reset form
+        setRecordTitle('');
+        setNoteText('');
+        setRecordedAudioUrl(null);
+        setRecordedImages([]);
+        setDuration(0);
+        // Navigate back after short delay
+        setTimeout(() => {
+          onBack();
+        }, 1500);
+      } else {
+        setError(response.error || '保存失败');
+      }
+    } catch (err) {
+      setError('保存失败，请重试');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Start Recording
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        setRecordedAudioUrl(url);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setDuration(0);
+    } catch (err) {
+      setError('无法访问麦克风，请检查权限');
+    }
+  };
+
+  // Stop Recording
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
 
   // 计时器逻辑
   useEffect(() => {
@@ -53,12 +156,92 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
           </span>
           <ChevronDown size={14} className={isRecording ? 'text-blue-600' : 'text-slate-400'} />
         </div>
-        
-        <div className="bg-[#2D1B22]/10 border border-red-500/10 px-3 py-1.5 rounded-full flex items-center space-x-2">
-            <div className={`w-2 h-2 rounded-full ${isRecording ? 'bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.4)]' : 'bg-slate-300'}`}></div>
-            <span className="text-sm font-mono font-bold tracking-widest text-slate-800">{formatTime(duration)}</span>
+
+        <div className="flex items-center space-x-3">
+            {/* 保存按钮 - 当有时长或笔记时显示 */}
+            {(duration > 0 || noteText) && !isRecording && (
+                <button
+                    onClick={() => {
+                        setRecordTitle(`${courseName} - ${formatTime(duration)}`);
+                        setShowSaveConfirm(true);
+                    }}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg active:scale-95 transition-transform"
+                >
+                    保存
+                </button>
+            )}
+            <div className="bg-[#2D1B22]/10 border border-red-500/10 px-3 py-1.5 rounded-full flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${isRecording ? 'bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.4)]' : 'bg-slate-300'}`}></div>
+                <span className="text-sm font-mono font-bold tracking-widest text-slate-800">{formatTime(duration)}</span>
+            </div>
         </div>
       </div>
+
+      {/* Error Toast */}
+      {error && (
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[100] bg-red-500 text-white px-4 py-3 rounded-xl shadow-lg flex items-center space-x-2 animate-in slide-in-from-top">
+              <AlertCircle size={18} />
+              <span className="text-sm font-medium">{error}</span>
+              <button onClick={() => setError(null)} className="ml-2 hover:bg-red-600 rounded p-1">
+                  <X size={14} />
+              </button>
+          </div>
+      )}
+
+      {/* Success Toast */}
+      {success && (
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[100] bg-green-500 text-white px-4 py-3 rounded-xl shadow-lg flex items-center space-x-2 animate-in slide-in-from-top">
+              <CheckCircle size={18} />
+              <span className="text-sm font-medium">{success}</span>
+          </div>
+      )}
+
+      {/* Save Confirmation Modal */}
+      {showSaveConfirm && (
+          <div className="fixed inset-0 z-[90] bg-black/50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+                  <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-bold text-slate-800">保存学习记录</h3>
+                      <button onClick={() => setShowSaveConfirm(false)} className="text-slate-400 hover:text-slate-600">
+                          <X size={20} />
+                      </button>
+                  </div>
+                  <div className="space-y-4">
+                      <div>
+                          <label className="block text-sm font-medium text-slate-600 mb-1">记录标题</label>
+                          <input
+                              type="text"
+                              value={recordTitle}
+                              onChange={(e) => setRecordTitle(e.target.value)}
+                              placeholder="请输入记录标题"
+                              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                      </div>
+                      <div className="text-sm text-slate-500 space-y-1">
+                          <p>课程：{courseName}</p>
+                          <p>时长：{formatTime(duration)}</p>
+                          {recordedAudioUrl && <p className="text-green-600">已录制音频</p>}
+                          {noteText && <p>笔记字数：{noteText.length}</p>}
+                      </div>
+                  </div>
+                  <div className="flex space-x-3 mt-5">
+                      <button
+                          onClick={() => setShowSaveConfirm(false)}
+                          className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-slate-600 font-medium hover:bg-slate-50"
+                      >
+                          取消
+                      </button>
+                      <button
+                          onClick={handleSaveRecord}
+                          disabled={!recordTitle.trim() || loading}
+                          className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                      >
+                          {loading ? <Loader2 className="animate-spin" size={18} /> : '保存'}
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* 【2】课程信息区 - 可点击切换 */}
       <div 
@@ -174,11 +357,11 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
 
             {/* 中心主按钮 */}
             <div className="flex flex-col items-center space-y-2 translate-y-3">
-                <button 
-                    onClick={() => setIsRecording(!isRecording)}
+                <button
+                    onClick={() => isRecording ? stopRecording() : startRecording()}
                     className={`w-24 h-24 rounded-[32px] flex items-center justify-center transition-all duration-300 transform active:scale-90 shadow-2xl ${
-                        isRecording 
-                        ? 'bg-[#E11D48] shadow-[0_15px_40px_rgba(225,29,72,0.35)]' 
+                        isRecording
+                        ? 'bg-[#E11D48] shadow-[0_15px_40px_rgba(225,29,72,0.35)]'
                         : 'bg-blue-600 shadow-[0_15px_40px_rgba(37,99,235,0.35)]'
                     }`}
                 >

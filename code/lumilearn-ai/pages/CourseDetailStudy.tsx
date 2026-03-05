@@ -1,9 +1,13 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { ArrowLeft, Edit3, Trash2, Calendar, MapPin, CheckCircle2, RotateCcw, Zap, Mic, Plus, Lock, MoreHorizontal, BookOpen, FileText, Settings, Minus, ChevronRight } from 'lucide-react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
+import { ArrowLeft, Edit3, Trash2, Calendar, MapPin, CheckCircle2, RotateCcw, Zap, Mic, Plus, Lock, MoreHorizontal, BookOpen, FileText, Settings, Minus, ChevronRight, Loader2, AlertCircle, X, Filter, AlertTriangle } from 'lucide-react';
 import { AppView } from '../types';
+import { getChapterList, createChapter, updateChapter, deleteChapter } from '../src/api/chapters';
+import { getKnowledgePointList, createKnowledgePoint, updateKnowledgePoint, deleteKnowledgePoint, updateMastery, getWeakPoints, batchCreateKnowledgePoints, batchUpdateStatus } from '../src/api/knowledgePoints';
+import type { Chapter, KnowledgePoint } from '../types';
 
 interface CourseDetailStudyProps {
-  onNavigate: (view: AppView) => void;
+  onNavigate: (view: AppView, data?: any) => void;
+  courseId?: string | null;
 }
 
 // --- 1. DATA STRUCTURE: REMOTE SENSING ---
@@ -144,10 +148,332 @@ const getDistance = (p1: React.PointerEvent, p2: React.PointerEvent) => {
     return Math.sqrt(Math.pow(p2.clientX - p1.clientX, 2) + Math.pow(p2.clientY - p1.clientY, 2));
 };
 
-const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate }) => {
+const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate, courseId }) => {
   // --- STATE ---
   const [courseData, setCourseData] = useState(INITIAL_DATA);
   const [isEditMode, setIsEditMode] = useState(false);
+
+  // API State
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+
+  // Modal State
+  const [showModal, setShowModal] = useState(false);
+  const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
+  const [editingChapter, setEditingChapter] = useState<Chapter | null>(null);
+  const [formData, setFormData] = useState({ name: '', description: '' });
+
+  // Delete Confirmation
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+
+  // Knowledge Points State
+  const [knowledgePoints, setKnowledgePoints] = useState<KnowledgePoint[]>([]);
+  const [showWeakPointsOnly, setShowWeakPointsOnly] = useState(false);
+  const [knowledgeModalMode, setKnowledgeModalMode] = useState<'create' | 'edit'>('create');
+  const [editingKnowledgePoint, setEditingKnowledgePoint] = useState<KnowledgePoint | null>(null);
+  const [knowledgeFormData, setKnowledgeFormData] = useState({ name: '', description: '', chapterId: '' });
+  const [showKnowledgeModal, setShowKnowledgeModal] = useState(false);
+  const [showKnowledgeDeleteConfirm, setShowKnowledgeDeleteConfirm] = useState<string | null>(null);
+
+  // Fetch Knowledge Points
+  // 获取知识点列表（按章节筛选）
+  const fetchKnowledgePoints = useCallback(async (chapterId?: string) => {
+    setLoading(true);
+    try {
+      let response;
+      if (showWeakPointsOnly) {
+        response = await getWeakPoints({ chapterId });
+      } else {
+        response = await getKnowledgePointList({ chapterId });
+      }
+      if (response.success && response.data) {
+        setKnowledgePoints(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch knowledge points:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [showWeakPointsOnly]);
+
+  // Create Knowledge Point
+  const handleCreateKnowledgePoint = async () => {
+    if (!knowledgeFormData.name.trim() || !knowledgeFormData.chapterId) return;
+    setLoading(true);
+    try {
+      const response = await createKnowledgePoint({
+        chapterId: knowledgeFormData.chapterId,
+        name: knowledgeFormData.name,
+        description: knowledgeFormData.description,
+      });
+      if (response.success) {
+        setShowKnowledgeModal(false);
+        setKnowledgeFormData({ name: '', description: '', chapterId: '' });
+        fetchKnowledgePoints(knowledgeFormData.chapterId);
+      } else {
+        setError(response.error || '创建知识点失败');
+      }
+    } catch (err) {
+      setError('创建知识点失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update Knowledge Point
+  const handleUpdateKnowledgePoint = async () => {
+    if (!editingKnowledgePoint || !knowledgeFormData.name.trim()) return;
+    setLoading(true);
+    try {
+      const response = await updateKnowledgePoint(editingKnowledgePoint.id, {
+        name: knowledgeFormData.name,
+        description: knowledgeFormData.description,
+      });
+      if (response.success) {
+        setShowKnowledgeModal(false);
+        setEditingKnowledgePoint(null);
+        setKnowledgeFormData({ name: '', description: '' });
+        fetchKnowledgePoints();
+      } else {
+        setError(response.error || '更新知识点失败');
+      }
+    } catch (err) {
+      setError('更新知识点失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Delete Knowledge Point
+  const handleDeleteKnowledgePoint = async (id: string) => {
+    setLoading(true);
+    try {
+      const response = await deleteKnowledgePoint(id);
+      if (response.success) {
+        setShowKnowledgeDeleteConfirm(null);
+        fetchKnowledgePoints();
+      } else {
+        setError(response.error || '删除知识点失败');
+      }
+    } catch (err) {
+      setError('删除知识点失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update Mastery
+  const handleUpdateMastery = async (id: string, status: string, masteryLevel?: number) => {
+    setLoading(true);
+    try {
+      const response = await updateMastery(id, { status, masteryLevel });
+      if (response.success) {
+        fetchKnowledgePoints();
+      } else {
+        setError(response.error || '更新掌握度失败');
+      }
+    } catch (err) {
+      setError('更新掌握度失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Open Knowledge Point Modal
+  const openKnowledgeModal = (mode: 'create' | 'edit', point?: KnowledgePoint) => {
+    setKnowledgeModalMode(mode);
+    if (mode === 'edit' && point) {
+      setEditingKnowledgePoint(point);
+      setKnowledgeFormData({ name: point.name, description: point.description || '' });
+    } else {
+      setEditingKnowledgePoint(null);
+      setKnowledgeFormData({ name: '', description: '' });
+    }
+    setShowKnowledgeModal(true);
+  };
+
+  // Batch Import State
+  const [showBatchImport, setShowBatchImport] = useState(false);
+  const [batchInputText, setBatchInputText] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [batchStatus, setBatchStatus] = useState<string>('NEED_REVIEW');
+  const [showBatchStatusModal, setShowBatchStatusModal] = useState(false);
+
+  // Batch Import Handler
+  const handleBatchImport = async () => {
+    if (!batchInputText.trim()) return;
+    const lines = batchInputText.split('\n').filter(line => line.trim());
+    if (lines.length === 0) return;
+
+    setLoading(true);
+    try {
+      const items = lines.map(name => ({
+        courseId: '550e8400-e29b-41d4-a716-446655440001',
+        name: name.trim(),
+        status: 'NEED_REVIEW',
+      }));
+      const response = await batchCreateKnowledgePoints(items);
+      if (response.success) {
+        setShowBatchImport(false);
+        setBatchInputText('');
+        fetchKnowledgePoints();
+      } else {
+        setError(response.error || '批量导入失败');
+      }
+    } catch (err) {
+      setError('批量导入失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Batch Update Status Handler
+  const handleBatchUpdateStatus = async () => {
+    if (selectedIds.length === 0) return;
+    setLoading(true);
+    try {
+      const response = await batchUpdateStatus(selectedIds, batchStatus);
+      if (response.success) {
+        setShowBatchStatusModal(false);
+        setSelectedIds([]);
+        fetchKnowledgePoints();
+      } else {
+        setError(response.error || '批量更新失败');
+      }
+    } catch (err) {
+      setError('批量更新失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Toggle Selection
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  // Select All
+  const toggleSelectAll = () => {
+    if (selectedIds.length === knowledgePoints.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(knowledgePoints.map(p => p.id));
+    }
+  };
+
+  // Fetch Knowledge Points on mount and when filter changes
+  useEffect(() => {
+    fetchKnowledgePoints();
+  }, [fetchKnowledgePoints, courseId]);
+
+  // Fetch Chapters from API
+  const fetchChapters = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await getChapterList({ courseId: courseId || undefined });
+      if (response.success && response.data) {
+        setChapters(response.data);
+      } else {
+        setError(response.error || '加载章节失败');
+      }
+    } catch (err) {
+      setError('网络错误，请检查连接');
+    } finally {
+      setLoading(false);
+    }
+  }, [courseId]);
+
+  // Create Chapter
+  const handleCreateChapter = async () => {
+    if (!formData.name.trim() || !courseId) return;
+    setLoading(true);
+    try {
+      const response = await createChapter({
+        courseId: courseId,
+        name: formData.name,
+        description: formData.description,
+        order: chapters.length + 1,
+      });
+      if (response.success) {
+        setShowModal(false);
+        setFormData({ name: '', description: '' });
+        fetchChapters();
+      } else {
+        setError(response.error || '创建失败');
+      }
+    } catch (err) {
+      setError('创建失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update Chapter
+  const handleUpdateChapter = async () => {
+    if (!editingChapter || !formData.name.trim()) return;
+    setLoading(true);
+    try {
+      const response = await updateChapter(editingChapter.id, {
+        name: formData.name,
+        description: formData.description,
+      });
+      if (response.success) {
+        setShowModal(false);
+        setEditingChapter(null);
+        setFormData({ name: '', description: '' });
+        fetchChapters();
+      } else {
+        setError(response.error || '更新失败');
+      }
+    } catch (err) {
+      setError('更新失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Delete Chapter
+  const handleDeleteChapter = async (id: string) => {
+    setLoading(true);
+    try {
+      const response = await deleteChapter(id);
+      if (response.success) {
+        setShowDeleteConfirm(null);
+        fetchChapters();
+      } else {
+        setError(response.error || '删除失败');
+      }
+    } catch (err) {
+      setError('删除失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Open Edit Modal
+  const openEditModal = (chapter: Chapter) => {
+    setModalMode('edit');
+    setEditingChapter(chapter);
+    setFormData({ name: chapter.name, description: chapter.description || '' });
+    setShowModal(true);
+  };
+
+  // Open Create Modal
+  const openCreateModal = () => {
+    setModalMode('create');
+    setEditingChapter(null);
+    setFormData({ name: '', description: '' });
+    setShowModal(true);
+  };
+
+  // Initial fetch
+  useEffect(() => {
+    fetchChapters();
+  }, [fetchChapters]);
   
   // Focus state
   const [focusedChapterId, setFocusedChapterId] = useState<string | null>(null);
@@ -446,7 +772,277 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate }) => 
 
   return (
     <div className="h-screen w-full bg-[#F1F5F9] overflow-hidden relative font-sans text-slate-800 flex flex-col">
-        
+        {/* Loading Overlay */}
+        {loading && (
+            <div className="absolute inset-0 z-[100] bg-white/50 flex items-center justify-center">
+                <div className="flex items-center space-x-2 bg-white px-4 py-3 rounded-xl shadow-lg">
+                    <Loader2 className="animate-spin text-blue-600" size={20} />
+                    <span className="text-sm font-medium text-slate-600">加载中...</span>
+                </div>
+            </div>
+        )}
+
+        {/* Error Toast */}
+        {error && (
+            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[100] bg-red-500 text-white px-4 py-3 rounded-xl shadow-lg flex items-center space-x-2 animate-in slide-in-from-top">
+                <AlertCircle size={18} />
+                <span className="text-sm font-medium">{error}</span>
+                <button onClick={() => setError(null)} className="ml-2 hover:bg-red-600 rounded p-1">
+                    <X size={14} />
+                </button>
+            </div>
+        )}
+
+        {/* Create/Edit Modal */}
+        {showModal && (
+            <div className="absolute inset-0 z-[90] bg-black/50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-bold text-slate-800">
+                            {modalMode === 'create' ? '新建章节' : '编辑章节'}
+                        </h3>
+                        <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-600 mb-1">章节名称</label>
+                            <input
+                                type="text"
+                                value={formData.name}
+                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                placeholder="请输入章节名称"
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-600 mb-1">描述（可选）</label>
+                            <textarea
+                                value={formData.description}
+                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                placeholder="请输入章节描述"
+                                rows={3}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex space-x-3 mt-5">
+                        <button
+                            onClick={() => setShowModal(false)}
+                            className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-slate-600 font-medium hover:bg-slate-50"
+                        >
+                            取消
+                        </button>
+                        <button
+                            onClick={modalMode === 'create' ? handleCreateChapter : handleUpdateChapter}
+                            disabled={!formData.name.trim() || loading}
+                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {modalMode === 'create' ? '创建' : '保存'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && (
+            <div className="absolute inset-0 z-[90] bg-black/50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+                    <div className="flex items-center justify-center mb-4">
+                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                            <AlertCircle className="text-red-600" size={24} />
+                        </div>
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-800 text-center mb-2">确认删除</h3>
+                    <p className="text-sm text-slate-500 text-center mb-5">删除后无法恢复，请谨慎操作</p>
+                    <div className="flex space-x-3">
+                        <button
+                            onClick={() => setShowDeleteConfirm(null)}
+                            className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-slate-600 font-medium hover:bg-slate-50"
+                        >
+                            取消
+                        </button>
+                        <button
+                            onClick={() => handleDeleteChapter(showDeleteConfirm)}
+                            className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700"
+                        >
+                            删除
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Knowledge Point Modal */}
+        {showKnowledgeModal && (
+            <div className="absolute inset-0 z-[90] bg-black/50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-bold text-slate-800">
+                            {knowledgeModalMode === 'create' ? '新建知识点' : '编辑知识点'}
+                        </h3>
+                        <button onClick={() => setShowKnowledgeModal(false)} className="text-slate-400 hover:text-slate-600">
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <div className="space-y-4">
+                        {knowledgeModalMode === 'create' && (
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-1">所属章节</label>
+                                <select
+                                    value={knowledgeFormData.chapterId}
+                                    onChange={(e) => setKnowledgeFormData({ ...knowledgeFormData, chapterId: e.target.value })}
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">请选择章节</option>
+                                    {chapters.map((ch) => (
+                                        <option key={ch.id} value={ch.id}>{ch.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+                        <div>
+                            <label className="block text-sm font-medium text-slate-600 mb-1">知识点名称</label>
+                            <input
+                                type="text"
+                                value={knowledgeFormData.name}
+                                onChange={(e) => setKnowledgeFormData({ ...knowledgeFormData, name: e.target.value })}
+                                placeholder="请输入知识点名称"
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-600 mb-1">描述（可选）</label>
+                            <textarea
+                                value={knowledgeFormData.description}
+                                onChange={(e) => setKnowledgeFormData({ ...knowledgeFormData, description: e.target.value })}
+                                placeholder="请输入知识点描述"
+                                rows={3}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex space-x-3 mt-5">
+                        <button
+                            onClick={() => setShowKnowledgeModal(false)}
+                            className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-slate-600 font-medium hover:bg-slate-50"
+                        >
+                            取消
+                        </button>
+                        <button
+                            onClick={knowledgeModalMode === 'create' ? handleCreateKnowledgePoint : handleUpdateKnowledgePoint}
+                            disabled={!knowledgeFormData.name.trim() || (knowledgeModalMode === 'create' && !knowledgeFormData.chapterId) || loading}
+                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {knowledgeModalMode === 'create' ? '创建' : '保存'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Knowledge Point Delete Confirmation */}
+        {showKnowledgeDeleteConfirm && (
+            <div className="absolute inset-0 z-[90] bg-black/50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+                    <div className="flex items-center justify-center mb-4">
+                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                            <AlertCircle className="text-red-600" size={24} />
+                        </div>
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-800 text-center mb-2">确认删除</h3>
+                    <p className="text-sm text-slate-500 text-center mb-5">删除后无法恢复，请谨慎操作</p>
+                    <div className="flex space-x-3">
+                        <button
+                            onClick={() => setShowKnowledgeDeleteConfirm(null)}
+                            className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-slate-600 font-medium hover:bg-slate-50"
+                        >
+                            取消
+                        </button>
+                        <button
+                            onClick={() => handleDeleteKnowledgePoint(showKnowledgeDeleteConfirm)}
+                            className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700"
+                        >
+                            删除
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Batch Import Modal */}
+        {showBatchImport && (
+            <div className="absolute inset-0 z-[90] bg-black/50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-bold text-slate-800">批量导入知识点</h3>
+                        <button onClick={() => setShowBatchImport(false)} className="text-slate-400 hover:text-slate-600">
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <p className="text-xs text-slate-500 mb-3">每行一个知识点名称</p>
+                    <textarea
+                        value={batchInputText}
+                        onChange={(e) => setBatchInputText(e.target.value)}
+                        placeholder="知识点1&#10;知识点2&#10;知识点3"
+                        rows={8}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"
+                    />
+                    <div className="flex justify-between items-center mt-3 text-xs text-slate-400">
+                        <span>{batchInputText.split('\n').filter(l => l.trim()).length} 个知识点</span>
+                    </div>
+                    <div className="flex space-x-3 mt-5">
+                        <button
+                            onClick={() => setShowBatchImport(false)}
+                            className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-slate-600 font-medium hover:bg-slate-50"
+                        >
+                            取消
+                        </button>
+                        <button
+                            onClick={handleBatchImport}
+                            disabled={!batchInputText.trim() || loading}
+                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            导入
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Batch Update Status Modal */}
+        {showBatchStatusModal && (
+            <div className="absolute inset-0 z-[90] bg-black/50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-bold text-slate-800">批量更新状态</h3>
+                        <button onClick={() => setShowBatchStatusModal(false)} className="text-slate-400 hover:text-slate-600">
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <p className="text-sm text-slate-500 mb-4">已选择 {selectedIds.length} 个知识点</p>
+                    <div className="space-y-2">
+                        {[
+                            { value: 'TODAY_REVIEW', label: '今日复习', color: 'bg-blue-100 text-blue-600' },
+                            { value: 'NEED_REVIEW', label: '待复习', color: 'bg-yellow-100 text-yellow-600' },
+                            { value: 'WEAK', label: '薄弱点', color: 'bg-red-100 text-red-600' },
+                            { value: 'MASTERED', label: '已掌握', color: 'bg-green-100 text-green-600' },
+                        ].map((option) => (
+                            <button
+                                key={option.value}
+                                onClick={() => { setBatchStatus(option.value); handleBatchUpdateStatus(); }}
+                                className={`w-full p-3 rounded-xl border border-slate-200 text-left font-medium hover:bg-slate-50 ${batchStatus === option.value ? 'ring-2 ring-blue-500' : ''}`}
+                            >
+                                <span className={`text-xs px-2 py-1 rounded-full ${option.color}`}>{option.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        )}
+
         {/* --- 1. HEADER --- */}
         <div className="absolute top-0 left-0 right-0 z-30 pt-12 pb-4 px-6 bg-gradient-to-b from-white/95 via-white/80 to-transparent pointer-events-none flex items-center justify-between">
              <div className="pointer-events-auto flex items-center">
@@ -582,7 +1178,12 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate }) => 
                                     </div>
                                     {isEditMode && !isLocked && (
                                         <div className="absolute -top-2 -right-2 flex space-x-1 animate-in zoom-in">
-                                            <button className="bg-white border border-slate-200 rounded-full p-1 text-slate-400 hover:text-blue-500 shadow-sm"><Edit3 size={10} /></button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); openEditModal(node.data as Chapter); }}
+                                                className="bg-white border border-slate-200 rounded-full p-1 text-slate-400 hover:text-blue-500 shadow-sm"
+                                            >
+                                                <Edit3 size={10} />
+                                            </button>
                                         </div>
                                     )}
                                 </div>
@@ -614,7 +1215,12 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate }) => 
                                     {/* Edit Mode Controls */}
                                     {isEditMode && !isLocked && (
                                         <div className="absolute -top-2 -right-2 flex space-x-1 scale-100 transition-transform">
-                                            <button className="bg-white border border-slate-200 rounded-full p-1 text-slate-400 hover:text-red-500 shadow-sm z-30"><Trash2 size={10} /></button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(node.id); }}
+                                                className="bg-white border border-slate-200 rounded-full p-1 text-slate-400 hover:text-red-500 shadow-sm z-30"
+                                            >
+                                                <Trash2 size={10} />
+                                            </button>
                                         </div>
                                     )}
                                 </div>
@@ -622,7 +1228,10 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate }) => 
 
                             {/* Placeholder Node (Edit Mode Only) */}
                             {isPlaceholder && (
-                                <div className="border-2 border-dashed border-slate-300 rounded-xl px-4 py-2 flex items-center space-x-2 cursor-pointer hover:border-blue-400 hover:text-blue-500 text-slate-400 bg-white/50 min-w-[140px] active:scale-95 transition-transform">
+                                <div
+                                    onClick={openCreateModal}
+                                    className="border-2 border-dashed border-slate-300 rounded-xl px-4 py-2 flex items-center space-x-2 cursor-pointer hover:border-blue-400 hover:text-blue-500 text-slate-400 bg-white/50 min-w-[140px] active:scale-95 transition-transform"
+                                >
                                     <Plus size={14} />
                                     <span className="text-xs font-bold">添加知识点</span>
                                 </div>
@@ -717,29 +1326,140 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate }) => 
                     </div>
                 </div>
 
-                {/* Right: Actions */}
+                {/* Right: Knowledge Points */}
                 <div className="w-1/2 h-full overflow-y-auto px-4 py-4 bg-slate-50/50">
-                    <h3 className="text-xs font-bold text-slate-400 mb-4 uppercase tracking-wider">Tools</h3>
-                    <div className="space-y-3">
-                        <button className="w-full bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3 active:scale-95 transition-transform">
-                            <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
-                                <BookOpen size={16} />
-                            </div>
-                            <span className="text-xs font-bold text-slate-700">结构化笔记</span>
-                        </button>
-                        <button className="w-full bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3 active:scale-95 transition-transform">
-                            <div className="w-8 h-8 rounded-full bg-purple-50 flex items-center justify-center text-purple-600">
-                                <FileText size={16} />
-                            </div>
-                            <span className="text-xs font-bold text-slate-700">章节测验</span>
-                        </button>
-                        <button className="w-full bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3 active:scale-95 transition-transform">
-                            <div className="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center text-orange-600">
-                                <Settings size={16} />
-                            </div>
-                            <span className="text-xs font-bold text-slate-700">学习偏好</span>
-                        </button>
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">知识点</h3>
+                        <div className="flex items-center space-x-1">
+                            {selectedIds.length > 0 ? (
+                                <>
+                                    <span className="text-xs text-blue-600 font-medium mr-1">{selectedIds.length}</span>
+                                    <button
+                                        onClick={() => setShowBatchStatusModal(true)}
+                                        className="p-1.5 rounded-lg bg-purple-100 text-purple-600 hover:bg-purple-200 transition-colors"
+                                        title="批量更新状态"
+                                    >
+                                        <AlertTriangle size={14} />
+                                    </button>
+                                    <button
+                                        onClick={() => { setSelectedIds([]); }}
+                                        className="p-1.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+                                        title="取消选择"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <button
+                                        onClick={toggleSelectAll}
+                                        className="p-1.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+                                        title="全选"
+                                    >
+                                        <CheckCircle2 size={14} />
+                                    </button>
+                                    <button
+                                        onClick={() => setShowBatchImport(true)}
+                                        className="p-1.5 rounded-lg bg-green-100 text-green-600 hover:bg-green-200 transition-colors"
+                                        title="批量导入"
+                                    >
+                                        <Plus size={14} />
+                                    </button>
+                                    <button
+                                        onClick={() => setShowWeakPointsOnly(!showWeakPointsOnly)}
+                                        className={`p-1.5 rounded-lg transition-colors ${showWeakPointsOnly ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                        title="只看薄弱点"
+                                    >
+                                        <Filter size={14} />
+                                    </button>
+                                </>
+                            )}
+                        </div>
                     </div>
+                    {knowledgePoints.length === 0 ? (
+                        <div className="text-center py-8 text-slate-400">
+                            <p className="text-xs">暂无知识点</p>
+                            <button
+                                onClick={() => openKnowledgeModal('create')}
+                                className="mt-2 text-xs text-blue-500 hover:underline"
+                            >
+                                点击添加
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {knowledgePoints.map((point) => (
+                                <div
+                                    key={point.id}
+                                    className={`bg-white p-3 rounded-xl border shadow-sm transition-all ${
+                                        selectedIds.includes(point.id) ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-100'
+                                    }`}
+                                >
+                                    <div className="flex items-start justify-between">
+                                        <button
+                                            onClick={() => toggleSelection(point.id)}
+                                            className={`mt-1 mr-2 flex-shrink-0 ${
+                                                selectedIds.includes(point.id) ? 'text-blue-500' : 'text-slate-300'
+                                            }`}
+                                        >
+                                            <CheckCircle2 size={18} />
+                                        </button>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center space-x-2 mb-1">
+                                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                                                    point.status === 'MASTERED' ? 'bg-green-100 text-green-600' :
+                                                    point.status === 'WEAK' ? 'bg-red-100 text-red-600' :
+                                                    point.status === 'NEED_REVIEW' ? 'bg-yellow-100 text-yellow-600' :
+                                                    'bg-blue-100 text-blue-600'
+                                                }`}>
+                                                    {point.status === 'MASTERED' ? '已掌握' :
+                                                     point.status === 'WEAK' ? '薄弱点' :
+                                                     point.status === 'NEED_REVIEW' ? '待复习' : '今日复习'}
+                                                </span>
+                                            </div>
+                                            <p className="text-sm font-medium text-slate-700 truncate">{point.name}</p>
+                                            {point.description && (
+                                                <p className="text-[10px] text-slate-400 mt-1 line-clamp-2">{point.description}</p>
+                                            )}
+                                        </div>
+                                        <div className="flex flex-col space-y-1 ml-2">
+                                            <button
+                                                onClick={() => openKnowledgeModal('edit', point)}
+                                                className="p-1 text-slate-400 hover:text-blue-500"
+                                            >
+                                                <Edit3 size={12} />
+                                            </button>
+                                            <button
+                                                onClick={() => setShowKnowledgeDeleteConfirm(point.id)}
+                                                className="p-1 text-slate-400 hover:text-red-500"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {/* Mastery Level */}
+                                    <div className="mt-2 flex items-center space-x-2">
+                                        <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-gradient-to-r from-red-400 to-green-500 transition-all"
+                                                style={{ width: `${(point.masteryLevel || 0) * 100}%` }}
+                                            />
+                                        </div>
+                                        <select
+                                            value={point.status}
+                                            onChange={(e) => handleUpdateMastery(point.id, e.target.value, point.masteryLevel)}
+                                            className="text-[10px] bg-slate-50 border border-slate-200 rounded px-1 py-0.5"
+                                        >
+                                            <option value="TODAY_REVIEW">今日复习</option>
+                                            <option value="NEED_REVIEW">待复习</option>
+                                            <option value="WEAK">薄弱点</option>
+                                            <option value="MASTERED">已掌握</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

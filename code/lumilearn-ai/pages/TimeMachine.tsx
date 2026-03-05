@@ -1,8 +1,11 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Play, Pause, ChevronLeft, ChevronRight, Share2, Lightbulb, Sparkles, Video, Flag, Camera, HelpCircle, X } from 'lucide-react';
 import { MOCK_TRANSCRIPT } from '../constants';
 import { AppView } from '../types';
+import TimeMarker from '../src/components/TimeMarker';
+import { getTimeMarkList } from '../src/api/timeMarks';
+import type { TimeMark } from '../types';
 
 interface TimeMachineProps {
   onBack: () => void;
@@ -19,13 +22,18 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1.0);
-  
+
   // AI 面板状态
   const [showAiPanel, setShowAiPanel] = useState(false);
   const INITIAL_PANEL_HEIGHT = 450;
   const [panelHeight, setPanelHeight] = useState(INITIAL_PANEL_HEIGHT);
   const [isDraggingPanel, setIsDraggingPanel] = useState(false);
-  
+
+  // 时间标记状态
+  const [timeMarks, setTimeMarks] = useState<TimeMark[]>([]);
+  const [marksLoading, setMarksLoading] = useState(false);
+  const [studyRecordId] = useState('550e8400-e29b-41d4-a716-446655440003'); // 测试用学习记录 ID
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
@@ -34,6 +42,37 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack }) => {
   const activeSlideIndex = PPT_SLIDES.reduce((acc, slide, idx) => {
     return currentTime >= slide.timeStart ? idx : acc;
   }, 0);
+
+  // 获取时间标记列表
+  const fetchTimeMarks = useCallback(async () => {
+    setMarksLoading(true);
+    try {
+      const response = await getTimeMarkList(studyRecordId);
+      if (response.success && response.data) {
+        setTimeMarks(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch time marks:', err);
+    } finally {
+      setMarksLoading(false);
+    }
+  }, [studyRecordId]);
+
+  // 初始获取时间标记
+  useEffect(() => {
+    fetchTimeMarks();
+  }, [fetchTimeMarks]);
+
+  // 时间标记变化处理
+  const handleMarksChange = (marks: TimeMark[]) => {
+    setTimeMarks(marks);
+  };
+
+  // 跳转到指定时间
+  const handleSeekTo = (time: number) => {
+    setCurrentTime(time);
+    setIsPlaying(false);
+  };
 
   useEffect(() => {
     let interval: any;
@@ -222,9 +261,19 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack }) => {
                    <h3 className="text-xl font-black text-slate-900 font-serif italic">课堂笔记回溯</h3>
                    <div className="w-24 h-1 bg-blue-500/20 mt-1 rounded-full"></div>
                 </div>
-                <div className="bg-slate-200/50 px-3 py-1 rounded-full flex items-center space-x-2 border border-slate-300/30">
-                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Smart-Sync</span>
+                <div className="flex items-center space-x-3">
+                    {/* 时间标记组件 */}
+                    <TimeMarker
+                        studyRecordId={studyRecordId}
+                        currentTime={currentTime}
+                        timeMarks={timeMarks}
+                        onMarksChange={handleMarksChange}
+                        onSeekTo={handleSeekTo}
+                    />
+                    <div className="bg-slate-200/50 px-3 py-1 rounded-full flex items-center space-x-2 border border-slate-300/30">
+                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Smart-Sync</span>
+                    </div>
                 </div>
             </div>
             <div className="flex-1 overflow-y-auto pl-14 pr-8 pt-2 scrollbar-hide pb-24 relative z-10" ref={scrollRef}>

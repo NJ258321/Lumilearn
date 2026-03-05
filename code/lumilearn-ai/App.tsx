@@ -36,9 +36,9 @@ const App: React.FC = () => {
       case AppView.COURSES:
         return <Courses onNavigate={navigate} />;
       case AppView.COURSE_DETAIL_REVIEW:
-        return <CourseDetailReview onNavigate={navigate} />;
+        return <CourseDetailReview onNavigate={navigate} courseId={currentCourseId} />;
       case AppView.COURSE_DETAIL_STUDY:
-        return <CourseDetailStudy onNavigate={navigate} />;
+        return <CourseDetailStudy onNavigate={navigate} courseId={currentCourseId} />;
       case AppView.AGENT:
         return <Agent onBack={() => navigate(AppView.ANALYSIS)} />;
       case AppView.DRILL:

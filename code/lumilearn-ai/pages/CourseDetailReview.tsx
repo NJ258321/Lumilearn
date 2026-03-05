@@ -1,9 +1,12 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { ArrowLeft, ChevronRight, Flame, Play, Target, CheckCircle2, Folder, Plus, Minus, Edit3, Trash2, X, Save, HelpCircle, RotateCcw } from 'lucide-react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
+import { ArrowLeft, ChevronRight, Flame, Play, Target, CheckCircle2, Folder, Plus, Minus, Edit3, Trash2, X, Save, HelpCircle, RotateCcw, Loader2, AlertCircle, Clock, FileText } from 'lucide-react';
 import { AppView } from '../types';
+import { getStudyRecordList, updateStudyRecord, deleteStudyRecord } from '../src/api/studyRecords';
+import type { StudyRecord } from '../types';
 
 interface CourseDetailReviewProps {
-  onNavigate: (view: AppView) => void;
+  onNavigate: (view: AppView, data?: any) => void;
+  courseId?: string | null;
 }
 
 // --- 1. DATA STRUCTURE ---
@@ -116,10 +119,104 @@ const getDistance = (p1: React.PointerEvent, p2: React.PointerEvent) => {
     return Math.sqrt(Math.pow(p2.clientX - p1.clientX, 2) + Math.pow(p2.clientY - p1.clientY, 2));
 };
 
-const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate }) => {
+const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, courseId }) => {
   // --- STATE: Data ---
   const [courseData, setCourseData] = useState(INITIAL_DATA);
   const [editingNode, setEditingNode] = useState<any | null>(null);
+
+  // --- API State ---
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [studyRecords, setStudyRecords] = useState<StudyRecord[]>([]);
+  const [showNotesModal, setShowNotesModal] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<StudyRecord | null>(null);
+  const [notesContent, setNotesContent] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+
+  // --- Fetch Study Records ---
+  const fetchStudyRecords = useCallback(async () => {
+    if (!courseId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await getStudyRecordList({ courseId }); // 后端不支持pageSize参数
+      if (response.success && response.data) {
+        setStudyRecords(response.data || []);
+      } else {
+        setError(response.error || '加载学习记录失败');
+      }
+    } catch (err) {
+      setError('网络错误，请检查连接');
+    } finally {
+      setLoading(false);
+    }
+  }, [courseId]);
+
+  // Initial fetch
+  useEffect(() => {
+    fetchStudyRecords();
+  }, [fetchStudyRecords]);
+
+  // --- Update Notes ---
+  const handleUpdateNotes = async () => {
+    if (!editingRecord) return;
+    setLoading(true);
+    try {
+      const response = await updateStudyRecord(editingRecord.id, { notes: notesContent });
+      if (response.success) {
+        setShowNotesModal(false);
+        setEditingRecord(null);
+        setNotesContent('');
+        fetchStudyRecords();
+      } else {
+        setError(response.error || '保存笔记失败');
+      }
+    } catch (err) {
+      setError('保存笔记失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Delete Record ---
+  const handleDeleteRecord = async (id: string) => {
+    setLoading(true);
+    try {
+      const response = await deleteStudyRecord(id);
+      if (response.success) {
+        setShowDeleteConfirm(null);
+        fetchStudyRecords();
+      } else {
+        setError(response.error || '删除失败');
+      }
+    } catch (err) {
+      setError('删除失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Open Notes Modal ---
+  const openNotesModal = (record: StudyRecord) => {
+    setEditingRecord(record);
+    setNotesContent(record.notes || '');
+    setShowNotesModal(true);
+  };
+
+  // --- Format Duration ---
+  const formatDuration = (seconds?: number) => {
+    if (!seconds) return '--:--';
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  // --- Format Date ---
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+  };
 
   // --- STATE: Canvas ---
   const containerRef = useRef<HTMLDivElement>(null);
@@ -460,7 +557,28 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate }) =
 
   return (
     <div className="h-screen w-full bg-[#F8FAFC] overflow-hidden relative font-sans text-slate-800 flex flex-col">
-        
+
+        {/* Loading Overlay */}
+        {loading && (
+            <div className="absolute inset-0 z-[100] bg-white/50 flex items-center justify-center">
+                <div className="flex items-center space-x-2 bg-white px-4 py-3 rounded-xl shadow-lg">
+                    <Loader2 className="animate-spin text-blue-600" size={20} />
+                    <span className="text-sm font-medium text-slate-600">加载中...</span>
+                </div>
+            </div>
+        )}
+
+        {/* Error Toast */}
+        {error && (
+            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[100] bg-red-500 text-white px-4 py-3 rounded-xl shadow-lg flex items-center space-x-2 animate-in slide-in-from-top">
+                <AlertCircle size={18} />
+                <span className="text-sm font-medium">{error}</span>
+                <button onClick={() => setError(null)} className="ml-2 hover:bg-red-600 rounded p-1">
+                    <X size={14} />
+                </button>
+            </div>
+        )}
+
         {/* --- HEADER --- */}
         <div className="absolute top-0 left-0 right-0 z-30 pt-12 pb-4 px-6 bg-gradient-to-b from-white/95 via-white/80 to-transparent pointer-events-none">
              <div className="pointer-events-auto flex items-center">
@@ -702,19 +820,62 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate }) =
                             </div>
                         </div>
 
-                        {/* --- RESTORED RESOURCES SECTION --- */}
+                        {/* --- STUDY RECORDS SECTION --- */}
                         <div className="pt-4 border-t border-slate-100">
-                             <h5 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">Resources</h5>
-                             <div className="grid grid-cols-2 gap-3">
-                                 <div className="bg-white border border-slate-100 p-3 rounded-xl flex flex-col items-center justify-center text-center shadow-sm">
-                                     <Folder size={20} className="text-blue-500 mb-2" />
-                                     <span className="text-xs font-bold text-slate-700">课件 PPT</span>
+                             <h5 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">学习记录</h5>
+                             {studyRecords.length === 0 ? (
+                                 <div className="text-center py-4 text-slate-400">
+                                     <Clock size={20} className="mx-auto mb-2 opacity-50" />
+                                     <p className="text-xs">暂无学习记录</p>
                                  </div>
-                                 <div className="bg-white border border-slate-100 p-3 rounded-xl flex flex-col items-center justify-center text-center shadow-sm">
-                                     <Play size={20} className="text-red-500 mb-2" />
-                                     <span className="text-xs font-bold text-slate-700">结构化文档</span>
+                             ) : (
+                                 <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                                     {studyRecords.slice(0, 5).map((record) => (
+                                         <div
+                                             key={record.id}
+                                             className="bg-white border border-slate-100 p-3 rounded-xl shadow-sm"
+                                         >
+                                             <div className="flex items-start justify-between">
+                                                 <div className="flex-1 min-w-0">
+                                                     <h6 className="text-xs font-bold text-slate-700 truncate">{record.title}</h6>
+                                                     <div className="flex items-center space-x-2 mt-1 text-[10px] text-slate-400">
+                                                         <Clock size={10} />
+                                                         <span>{formatDate(record.recordedAt)}</span>
+                                                         <span>·</span>
+                                                         <span>{formatDuration(record.duration)}</span>
+                                                     </div>
+                                                 </div>
+                                                 <div className="flex space-x-1 ml-2">
+                                                     <button
+                                                         onClick={() => openNotesModal(record)}
+                                                         className="p-1 text-slate-400 hover:text-blue-500"
+                                                         title="编辑笔记"
+                                                     >
+                                                         <FileText size={12} />
+                                                     </button>
+                                                     <button
+                                                         onClick={() => setShowDeleteConfirm(record.id)}
+                                                         className="p-1 text-slate-400 hover:text-red-500"
+                                                         title="删除"
+                                                     >
+                                                         <Trash2 size={12} />
+                                                     </button>
+                                                 </div>
+                                             </div>
+                                             {record.notes && (
+                                                 <p className="text-[10px] text-slate-500 mt-2 line-clamp-2">{record.notes}</p>
+                                             )}
+                                             <button
+                                                 onClick={() => onNavigate(AppView.TIME_MACHINE)}
+                                                 className="mt-2 w-full py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-bold hover:bg-blue-100 flex items-center justify-center"
+                                             >
+                                                 <Play size={10} className="mr-1" />
+                                                 进入时光机
+                                             </button>
+                                         </div>
+                                     ))}
                                  </div>
-                             </div>
+                             )}
                         </div>
                     </div>
                 </div>
@@ -806,6 +967,75 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate }) =
                 双击章节节点展开详情
             </div>
         )}
+
+        {/* Notes Edit Modal */}
+        {showNotesModal && (
+            <div className="absolute inset-0 z-[90] bg-black/50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-bold text-slate-800">编辑笔记</h3>
+                        <button onClick={() => setShowNotesModal(false)} className="text-slate-400 hover:text-slate-600">
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <div className="mb-2 text-xs text-slate-500">
+                        {editingRecord?.title}
+                    </div>
+                    <textarea
+                        value={notesContent}
+                        onChange={(e) => setNotesContent(e.target.value)}
+                        placeholder="在此添加学习笔记..."
+                        rows={8}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"
+                    />
+                    <div className="flex space-x-3 mt-5">
+                        <button
+                            onClick={() => setShowNotesModal(false)}
+                            className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-slate-600 font-medium hover:bg-slate-50"
+                        >
+                            取消
+                        </button>
+                        <button
+                            onClick={handleUpdateNotes}
+                            disabled={loading}
+                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center"
+                        >
+                            {loading ? <Loader2 className="animate-spin" size={18} /> : '保存'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && (
+            <div className="absolute inset-0 z-[90] bg-black/50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+                    <div className="flex items-center justify-center mb-4">
+                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                            <AlertCircle className="text-red-600" size={24} />
+                        </div>
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-800 text-center mb-2">确认删除</h3>
+                    <p className="text-sm text-slate-500 text-center mb-5">删除后无法恢复，请谨慎操作</p>
+                    <div className="flex space-x-3">
+                        <button
+                            onClick={() => setShowDeleteConfirm(null)}
+                            className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-slate-600 font-medium hover:bg-slate-50"
+                        >
+                            取消
+                        </button>
+                        <button
+                            onClick={() => handleDeleteRecord(showDeleteConfirm)}
+                            className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700"
+                        >
+                            删除
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
     </div>
   );
 };
