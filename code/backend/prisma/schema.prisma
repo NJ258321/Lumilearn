@@ -62,6 +62,10 @@ model KnowledgePoint {
   mistakes     Mistake[]
   timeMarks    TimeMark[]
 
+  // 知识图谱关系
+  outgoingRelations KnowledgeRelation[] @relation("KnowledgeRelationSource")
+  incomingRelations KnowledgeRelation[] @relation("KnowledgeRelationTarget")
+
   @@index([chapterId])
   @@index([status])
 }
@@ -148,6 +152,25 @@ model Mistake {
   @@index([createdAt])
 }
 
+// ==================== Knowledge Graph ====================
+
+model KnowledgeRelation {
+  id             String   @id @default(uuid())
+  sourceId       String   // 源知识点ID
+  targetId       String   // 目标知识点ID
+  relationType   String   // PREREQUISITE | RELATED | EXTENDS | EXAMPLE
+  weight         Int      @default(5) // 关系权重 1-10
+  createdAt      DateTime @default(now())
+
+  source         KnowledgePoint @relation("KnowledgeRelationSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  target         KnowledgePoint @relation("KnowledgeRelationTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, targetId, relationType])
+  @@index([sourceId])
+  @@index([targetId])
+  @@index([relationType])
+}
+
 // ==================== Type Constants (for reference) ====================
 // CourseStatus: STUDYING | REVIEWING | ARCHIVED
 // CourseType: PROFESSIONAL | CROSS_MAJOR | ELECTIVE
@@ -157,3 +180,4 @@ model Mistake {
 // TimeMarkType: START | END | EMPHASIS | BOARD_CHANGE | NOTE | QUESTION
 // TaskType: CHAPTER_REVIEW | MOCK_EXAM | WEAK_POINT
 // TaskStatus: PENDING | IN_PROGRESS | COMPLETED | SKIPPED
+// RelationType: PREREQUISITE | RELATED | EXTENDS | EXAMPLE

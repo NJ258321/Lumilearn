@@ -24,6 +24,9 @@ export type TaskType = 'CHAPTER_REVIEW' | 'MOCK_EXAM' | 'WEAK_POINT'
 /** 考试任务状态 */
 export type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED'
 
+/** 知识关系类型 */
+export type RelationType = 'PREREQUISITE' | 'RELATED' | 'EXTENDS' | 'EXAMPLE'
+
 // ==================== Core Models ====================
 
 /** 课程 */
@@ -409,3 +412,57 @@ export const ROUND_CONFIG = {
   2: { name: '二轮复习', weight: 0.35 },
   3: { name: '三轮复习', weight: 0.25 }
 } as const
+
+// ==================== Knowledge Relations ====================
+
+/** 知识关系 */
+export interface KnowledgeRelation {
+  id: string
+  sourceId: string
+  targetId: string
+  relationType: RelationType
+  weight: number
+  createdAt: Date
+  source?: KnowledgePoint
+  target?: KnowledgePoint
+}
+
+/** 创建知识关系请求 */
+export interface CreateKnowledgeRelationRequest {
+  sourceId: string
+  targetId: string
+  relationType: RelationType
+  weight?: number
+}
+
+/** 更新知识关系请求 */
+export interface UpdateKnowledgeRelationRequest {
+  relationType?: RelationType
+  weight?: number
+}
+
+/** 批量创建知识关系请求 */
+export interface BatchCreateKnowledgeRelationsRequest {
+  relations: CreateKnowledgeRelationRequest[]
+}
+
+/** 知识关系图响应 */
+export interface KnowledgeGraphResponse {
+  root: {
+    id: string
+    name: string
+    status: KnowledgeStatus
+    masteryScore: number
+  }
+  relations: KnowledgeRelation[]
+  prerequisites: Array<{
+    id: string
+    name: string
+    masteryScore: number
+  }>
+  related: Array<{
+    id: string
+    name: string
+    masteryScore: number
+  }>
+}

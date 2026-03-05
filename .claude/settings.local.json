@@ -9,7 +9,11 @@
       "Bash(powershell:*)",
       "Bash(node:*)",
       "Bash(cp:*)",
-      "Bash(ffmpeg:*)"
+      "Bash(ffmpeg:*)",
+      "Bash(sqlite3:*)",
+      "Bash(pkill:*)",
+      "Bash(__NEW_LINE_8d319c65c158dcea__ echo:*)",
+      "Bash(npm install:*)"
     ]
   }
 }
