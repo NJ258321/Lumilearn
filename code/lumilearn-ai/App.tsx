@@ -4,6 +4,8 @@ import Layout from './components/Layout';
 import BottomNav from './components/BottomNav';
 import Dashboard from './pages/Dashboard';
 import Courses from './pages/Courses';
+import ChapterManager from './pages/ChapterManager';
+import KnowledgeManager from './pages/KnowledgeManager';
 import Agent from './pages/Agent';
 import Drill from './pages/Drill';
 import TimeMachine from './pages/TimeMachine';
@@ -18,11 +20,19 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [currentCourseId, setCurrentCourseId] = useState<string | null>('c1');
   const [viewData, setViewData] = useState<any>(null);
+  const [recordId, setRecordId] = useState<string | null>(null);
 
   const navigate = (view: AppView, data?: any) => {
     setCurrentView(view);
     setViewData(data);
-    if (data && typeof data === 'string') setCurrentCourseId(data);
+    if (data && typeof data === 'string') {
+      // 根据view类型判断是courseId还是recordId
+      if (view === AppView.TIME_MACHINE) {
+        setRecordId(data);
+      } else {
+        setCurrentCourseId(data);
+      }
+    }
   };
 
   const handleCourseChange = (id: string) => {
@@ -35,6 +45,10 @@ const App: React.FC = () => {
         return <Dashboard onNavigate={navigate} />;
       case AppView.COURSES:
         return <Courses onNavigate={navigate} />;
+      case AppView.CHAPTER_MANAGER:
+        return <ChapterManager onNavigate={navigate} />;
+      case AppView.KNOWLEDGE_MANAGER:
+        return <KnowledgeManager onNavigate={navigate} />;
       case AppView.COURSE_DETAIL_REVIEW:
         return <CourseDetailReview onNavigate={navigate} courseId={currentCourseId} />;
       case AppView.COURSE_DETAIL_STUDY:
@@ -54,7 +68,7 @@ const App: React.FC = () => {
           />
         );
       case AppView.TIME_MACHINE:
-        return <TimeMachine onBack={() => navigate(AppView.DASHBOARD)} />;
+        return <TimeMachine onBack={() => navigate(AppView.DASHBOARD)} recordId={recordId} />;
       case AppView.RECORDER:
         return <Recorder onBack={() => navigate(AppView.DASHBOARD)} initialCourseName={viewData?.courseName} />;
       default:

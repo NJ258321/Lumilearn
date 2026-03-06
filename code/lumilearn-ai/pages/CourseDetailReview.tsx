@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
-import { ArrowLeft, ChevronRight, Flame, Play, Target, CheckCircle2, Folder, Plus, Minus, Edit3, Trash2, X, Save, HelpCircle, RotateCcw, Loader2, AlertCircle, Clock, FileText } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Flame, Play, Target, CheckCircle2, Folder, Plus, Minus, Edit3, Trash2, X, Save, HelpCircle, RotateCcw, Loader2, AlertCircle, Clock, FileText, Calendar, Search } from 'lucide-react';
 import { AppView } from '../types';
 import { getStudyRecordList, updateStudyRecord, deleteStudyRecord } from '../src/api/studyRecords';
 import type { StudyRecord } from '../types';
@@ -132,6 +132,8 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
   const [editingRecord, setEditingRecord] = useState<StudyRecord | null>(null);
   const [notesContent, setNotesContent] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
 
   // --- Fetch Study Records ---
   const fetchStudyRecords = useCallback(async () => {
@@ -139,7 +141,10 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
     setLoading(true);
     setError(null);
     try {
-      const response = await getStudyRecordList({ courseId }); // 后端不支持pageSize参数
+      const params: any = { courseId };
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
+      const response = await getStudyRecordList(params);
       if (response.success && response.data) {
         setStudyRecords(response.data || []);
       } else {
@@ -150,12 +155,23 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
     } finally {
       setLoading(false);
     }
-  }, [courseId]);
+  }, [courseId, startDate, endDate]);
 
   // Initial fetch
   useEffect(() => {
     fetchStudyRecords();
   }, [fetchStudyRecords]);
+
+  // --- Search by Date Range ---
+  const handleSearchByDate = () => {
+    fetchStudyRecords();
+  };
+
+  // --- Clear Date Filter ---
+  const clearDateFilter = () => {
+    setStartDate('');
+    setEndDate('');
+  };
 
   // --- Update Notes ---
   const handleUpdateNotes = async () => {
@@ -797,7 +813,7 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
 
                 <div className="flex-1 overflow-y-auto px-6 pb-6 mt-2">
                     <div className="space-y-4">
-                        <div className="flex items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 active:bg-blue-50 active:border-blue-100 transition-colors cursor-pointer" onClick={() => onNavigate(AppView.TIME_MACHINE)}>
+                        <div className="flex items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 active:bg-blue-50 active:border-blue-100 transition-colors cursor-pointer" onClick={() => onNavigate(AppView.TIME_MACHINE, record.id)}>
                             <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 mr-4">
                                 <Target size={20} />
                             </div>
@@ -820,9 +836,48 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
                             </div>
                         </div>
 
-                        {/* --- STUDY RECORDS SECTION --- */}
+                        {/* --- DATE RANGE SEARCH --- */}
                         <div className="pt-4 border-t border-slate-100">
-                             <h5 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">学习记录</h5>
+                            <div className="flex items-center justify-between mb-3">
+                                <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider">学习记录</h5>
+                                {(startDate || endDate) && (
+                                    <button
+                                        onClick={clearDateFilter}
+                                        className="text-[10px] text-blue-500 hover:text-blue-700"
+                                    >
+                                        清除筛选
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2 mb-3">
+                                <div className="flex-1 flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5">
+                                    <Calendar size={12} className="text-slate-400" />
+                                    <input
+                                        type="date"
+                                        value={startDate}
+                                        onChange={(e) => setStartDate(e.target.value)}
+                                        className="text-[10px] text-slate-600 w-full outline-none"
+                                        placeholder="开始日期"
+                                    />
+                                </div>
+                                <span className="text-slate-400 text-xs">-</span>
+                                <div className="flex-1 flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5">
+                                    <Calendar size={12} className="text-slate-400" />
+                                    <input
+                                        type="date"
+                                        value={endDate}
+                                        onChange={(e) => setEndDate(e.target.value)}
+                                        className="text-[10px] text-slate-600 w-full outline-none"
+                                        placeholder="结束日期"
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleSearchByDate}
+                                    className="p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                                >
+                                    <Search size={14} />
+                                </button>
+                            </div>
                              {studyRecords.length === 0 ? (
                                  <div className="text-center py-4 text-slate-400">
                                      <Clock size={20} className="mx-auto mb-2 opacity-50" />
@@ -866,7 +921,7 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
                                                  <p className="text-[10px] text-slate-500 mt-2 line-clamp-2">{record.notes}</p>
                                              )}
                                              <button
-                                                 onClick={() => onNavigate(AppView.TIME_MACHINE)}
+                                                 onClick={() => onNavigate(AppView.TIME_MACHINE, record.id)}
                                                  className="mt-2 w-full py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-bold hover:bg-blue-100 flex items-center justify-center"
                                              >
                                                  <Play size={10} className="mr-1" />

@@ -158,3 +158,24 @@ export async function batchUpdateStatus(
     return { success: false, error: '批量更新知识点状态失败' }
   }
 }
+
+// 获取知识点的时间分布 (Task-2.2.2)
+export async function getKnowledgePointTimeline(
+  id: string
+): Promise<ApiResponse<{
+  knowledgePoint: { id: string; name: string }
+  timeline: Array<{
+    timeMarkId: string
+    studyRecordId: string
+    studyRecordTitle: string
+    timestamp: number
+    type: string
+    createdAt: string
+  }>
+}>> {
+  try {
+    return await api.get<any>(`${API_CONFIG.endpoints.knowledgePoints}/${id}/timeline`)
+  } catch (error) {
+    return { success: false, error: '获取知识点时间分布失败' }
+  }
+}

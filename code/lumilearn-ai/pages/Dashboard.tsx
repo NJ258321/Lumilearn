@@ -4,7 +4,8 @@ import { MOCK_TASK_GROUPS } from '../constants';
 import { AppView, Task, TaskGroup } from '../types';
 import { generateDailyPlan } from '../services/geminiService';
 import { getStudyRecordList, deleteStudyRecord, searchStudyRecords } from '../src/api/studyRecords';
-import type { StudyRecord } from '../types';
+import { getRecentlyReviewed } from '../src/api/knowledgePoints';
+import type { StudyRecord, KnowledgePoint } from '../types';
 
 interface DashboardProps {
   onNavigate: (view: AppView, data?: any) => void;
@@ -22,6 +23,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const [showRecords, setShowRecords] = useState(false);
   const [filterCourseId, setFilterCourseId] = useState<string>('');
   const [searchKeyword, setSearchKeyword] = useState('');
+
+  // Recently Reviewed Knowledge Points State - Task 2.3.3
+  const [recentKps, setRecentKps] = useState<KnowledgePoint[]>([]);
+  const [recentKpsLoading, setRecentKpsLoading] = useState(false);
 
   // Fetch Study Records
   const fetchStudyRecords = useCallback(async () => {
@@ -45,12 +50,29 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     }
   }, [filterCourseId, searchKeyword]);
 
+  // Fetch Recently Reviewed Knowledge Points - Task 2.3.3
+  const fetchRecentKps = useCallback(async () => {
+    setRecentKpsLoading(true);
+    try {
+      const response = await getRecentlyReviewed({ limit: 5 });
+      if (response.success && response.data) {
+        setRecentKps(response.data);
+      }
+    } catch (err) {
+      console.error('获取最近复习知识点失败', err);
+    } finally {
+      setRecentKpsLoading(false);
+    }
+  }, []);
+
   // Initial fetch
   useEffect(() => {
     if (showRecords) {
       fetchStudyRecords();
     }
-  }, [showRecords, fetchStudyRecords]);
+    // Fetch recently reviewed knowledge points on mount - Task 2.3.3
+    fetchRecentKps();
+  }, [showRecords, fetchStudyRecords, fetchRecentKps]);
 
   // Delete Record
   const handleDeleteRecord = async (id: string) => {
@@ -229,7 +251,48 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         </div>
 
         <div className="relative px-4 min-h-[600px]">
-          
+
+          {/* --- 复习建议卡片 - Task 2.3.3 --- */}
+          {recentKps.length > 0 && (
+            <div className="mb-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-100 rounded-2xl p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="bg-amber-100 p-1.5 rounded-lg">
+                    <Zap size={14} className="text-amber-600" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-800">复习建议</h3>
+                </div>
+                <span className="text-[10px] text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full font-medium">
+                  最近复习
+                </span>
+              </div>
+              <div className="space-y-2">
+                {recentKps.slice(0, 3).map((kp) => (
+                  <div
+                    key={kp.id}
+                    className="flex items-center justify-between bg-white/80 rounded-xl p-2.5 border border-amber-100/50"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-slate-700 truncate">{kp.name}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        掌握度: {kp.masteryScore || 0}%
+                      </p>
+                    </div>
+                    <div className={`text-[10px] px-2 py-1 rounded-lg font-medium ${
+                      kp.status === 'WEAK' ? 'bg-red-100 text-red-600' :
+                      kp.status === 'NEED_REVIEW' ? 'bg-yellow-100 text-yellow-600' :
+                      'bg-green-100 text-green-600'
+                    }`}>
+                      {kp.status === 'WEAK' ? '薄弱' :
+                       kp.status === 'NEED_REVIEW' ? '待复习' :
+                       kp.status === 'MASTERED' ? '已掌握' : '学习中'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* --- The Visual Spine (Left) --- */}
           {/* Main vertical line */}
           <div className="absolute left-[64px] top-4 bottom-0 w-[2px] bg-slate-200"></div>

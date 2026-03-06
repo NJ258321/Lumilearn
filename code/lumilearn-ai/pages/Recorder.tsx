@@ -1,9 +1,11 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, Square, Camera, Flag, Upload, ArrowLeft, ChevronDown, Play, Zap, Type, X, Search, Check, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
-import { MOCK_COURSES } from '../constants';
+import { Course, Chapter } from '../types';
+import { getCourseList } from '../src/api/courses';
+import { getChapterList } from '../src/api/chapters';
 import { createStudyRecord } from '../src/api/studyRecords';
-import { uploadAudio, uploadImage } from '../src/api/upload';
+import { uploadAudio, uploadImage, uploadDocument, deleteFile } from '../src/api/upload';
 
 interface RecorderProps {
   onBack: () => void;
@@ -14,13 +16,85 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
   // 修改初始状态：默认为暂停，计时从 0 开始
   const [isRecording, setIsRecording] = useState(false);
   const [duration, setDuration] = useState(0);
-  const [imageCount] = useState(3);
+  const [imageCount, setImageCount] = useState(0);
   const [noteText, setNoteText] = useState('');
 
-  // 课程选择状态
-  const [courseName, setCourseName] = useState(initialCourseName || "遥感原理与应用");
+  // API 数据
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState(true);
+
+  // 课程和章节选择状态
+  const [selectedCourseId, setSelectedCourseId] = useState<string>('');
+  const [selectedChapterId, setSelectedChapterId] = useState<string>('');
+  const [courseName, setCourseName] = useState(initialCourseName || '');
   const [showPicker, setShowPicker] = useState(false);
+  const [showChapterPicker, setShowChapterPicker] = useState(false);
   const [searchText, setSearchText] = useState('');
+
+  // 加载课程列表
+  const fetchCourses = useCallback(async () => {
+    setCoursesLoading(true);
+    try {
+      const response = await getCourseList();
+      if (response.success && response.data) {
+        setCourses(response.data);
+        // 如果有初始课程名，找到对应的ID
+        if (initialCourseName) {
+          const course = response.data.find(c => c.name === initialCourseName);
+          if (course) {
+            setSelectedCourseId(course.id);
+            setCourseName(course.name);
+          }
+        } else if (response.data.length > 0) {
+          setSelectedCourseId(response.data[0].id);
+          setCourseName(response.data[0].name);
+        }
+      }
+    } catch (err) {
+      console.error('加载课程失败', err);
+    } finally {
+      setCoursesLoading(false);
+    }
+  }, [initialCourseName]);
+
+  // 加载章节列表
+  const fetchChapters = useCallback(async (courseId: string) => {
+    try {
+      const response = await getChapterList({ courseId });
+      if (response.success && response.data) {
+        setChapters(response.data);
+        // 默认选择第一个章节
+        if (response.data.length > 0) {
+          setSelectedChapterId(response.data[0].id);
+        }
+      }
+    } catch (err) {
+      console.error('加载章节失败', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCourses();
+  }, [fetchCourses]);
+
+  // 课程变化时加载章节
+  useEffect(() => {
+    if (selectedCourseId) {
+      fetchChapters(selectedCourseId);
+      // 更新课程名称
+      const course = courses.find(c => c.id === selectedCourseId);
+      if (course) {
+        setCourseName(course.name);
+      }
+      setSelectedChapterId('');
+    }
+  }, [selectedCourseId, courses, fetchChapters]);
+
+  // 过滤课程列表
+  const filteredCourses = courses.filter(c =>
+    c.name.toLowerCase().includes(searchText.toLowerCase())
+  );
 
   // API State
   const [loading, setLoading] = useState(false);
@@ -36,6 +110,211 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 上传状态
+  const [uploading, setUploading] = useState(false);
+
+  // 处理文件上传
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 验证文件类型
+    const allowedTypes = ['audio/mpeg', 'audio/wav', 'audio/m4a', 'audio/x-m4a', 'audio/mp3'];
+    if (!allowedTypes.includes(file.type)) {
+      setError('仅支持 MP3、WAV、M4A 格式的音频文件');
+      return;
+    }
+
+    // 验证文件大小（10MB）
+    if (file.size > 10 * 1024 * 1024) {
+      setError('文件大小不能超过 10MB');
+      return;
+    }
+
+    setUploading(true);
+    setError(null);
+
+    try {
+      const response = await uploadAudio(file);
+      if (response.success && response.data) {
+        setRecordedAudioUrl(response.data.url);
+        setSuccess('音频上传成功！');
+      } else {
+        setError(response.error || '上传失败');
+      }
+    } catch (err) {
+      setError('上传失败，请重试');
+    } finally {
+      setUploading(false);
+      // 清空input以便再次选择同一文件
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // 触发文件选择
+  const triggerFileUpload = () => {
+    fileInputRef.current?.click();
+  };
+
+  // 图片上传相关
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [uploadedImages, setUploadedImages] = useState<{ url: string; originalName: string }[]>([]);
+
+  // 处理图片上传
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    // 验证文件
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+    const validFiles = Array.from(files).filter(file => {
+      if (!allowedTypes.includes(file.type)) {
+        setError(`不支持 ${file.name} 格式，仅支持 JPG、PNG、GIF、WebP 格式`);
+        return false;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        setError(`${file.name} 超过5MB限制`);
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length === 0) return;
+
+    setImageUploading(true);
+    setError(null);
+
+    try {
+      const newImages: { url: string; originalName: string }[] = [];
+
+      for (const file of validFiles) {
+        const response = await uploadImage(file);
+        if (response.success && response.data) {
+          newImages.push({
+            url: response.data.url,
+            originalName: response.data.originalName
+          });
+        } else {
+          setError(response.error || `${file.name} 上传失败`);
+        }
+      }
+
+      if (newImages.length > 0) {
+        setUploadedImages(prev => [...prev, ...newImages]);
+        setImageCount(prev => prev + newImages.length);
+        setSuccess(`成功上传 ${newImages.length} 张图片`);
+      }
+    } catch (err) {
+      setError('图片上传失败，请重试');
+    } finally {
+      setImageUploading(false);
+      if (imageInputRef.current) {
+        imageInputRef.current.value = '';
+      }
+    }
+  };
+
+  // 触发图片选择
+  const triggerImageUpload = () => {
+    imageInputRef.current?.click();
+  };
+
+  // 删除已上传的图片
+  const removeImage = async (index: number) => {
+    const imageToRemove = uploadedImages[index];
+    if (imageToRemove) {
+      try {
+        // 从URL中提取文件名
+        const filename = imageToRemove.url.split('/').pop();
+        if (filename) {
+          await deleteFile(filename);
+        }
+      } catch (err) {
+        console.error('删除图片失败', err);
+      }
+    }
+    setUploadedImages(prev => prev.filter((_, i) => i !== index));
+    setImageCount(prev => prev - 1);
+  };
+
+  // 文档上传相关
+  const documentInputRef = useRef<HTMLInputElement>(null);
+  const [documentUploading, setDocumentUploading] = useState(false);
+  const [uploadedDocument, setUploadedDocument] = useState<{ url: string; originalName: string } | null>(null);
+
+  // 处理文档上传
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 验证文件类型
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    ];
+    if (!allowedTypes.includes(file.type)) {
+      setError('仅支持 PDF、Word、PowerPoint 格式的文档');
+      return;
+    }
+
+    // 验证文件大小（50MB）
+    if (file.size > 50 * 1024 * 1024) {
+      setError('文档大小不能超过 50MB');
+      return;
+    }
+
+    setDocumentUploading(true);
+    setError(null);
+
+    try {
+      const response = await uploadDocument(file);
+      if (response.success && response.data) {
+        setUploadedDocument({
+          url: response.data.url,
+          originalName: response.data.originalName
+        });
+        setSuccess('文档上传成功！');
+      } else {
+        setError(response.error || '上传失败');
+      }
+    } catch (err) {
+      setError('上传失败，请重试');
+    } finally {
+      setDocumentUploading(false);
+      if (documentInputRef.current) {
+        documentInputRef.current.value = '';
+      }
+    }
+  };
+
+  // 触发文档选择
+  const triggerDocumentUpload = () => {
+    documentInputRef.current?.click();
+  };
+
+  // 删除已上传的文档
+  const removeDocument = async () => {
+    if (uploadedDocument) {
+      try {
+        // 从URL中提取文件名
+        const filename = uploadedDocument.url.split('/').pop();
+        if (filename) {
+          await deleteFile(filename);
+        }
+      } catch (err) {
+        console.error('删除文档失败', err);
+      }
+    }
+    setUploadedDocument(null);
+  };
 
   // Save Study Record Handler
   const handleSaveRecord = async () => {
@@ -43,24 +322,41 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       setError('请输入记录标题');
       return;
     }
+    if (!selectedCourseId) {
+      setError('请选择课程');
+      return;
+    }
+    if (!selectedChapterId) {
+      setError('请选择章节');
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
     try {
-      // Get course ID (using mock data for now)
-      const course = MOCK_COURSES.find(c => c.name === courseName);
-      const courseId = course?.id || '550e8400-e29b-41d4-a716-446655440001';
+      // 如果有本地录制的音频，先上传
+      let audioUrl = recordedAudioUrl;
+      if (recordedAudioUrl && recordedAudioUrl.startsWith('blob:')) {
+        // 将blob URL转换为File并上传
+        const response = await fetch(recordedAudioUrl);
+        const blob = await response.blob();
+        const file = new File([blob], 'recording.webm', { type: 'audio/webm' });
+        const uploadRes = await uploadAudio(file);
+        if (uploadRes.success && uploadRes.data) {
+          audioUrl = uploadRes.data.url;
+        }
+      }
 
       const response = await createStudyRecord({
-        courseId,
-        chapterId: '550e8400-e29b-41d4-a716-446655440002', // 使用测试章节ID
+        courseId: selectedCourseId,
+        chapterId: selectedChapterId,
         title: recordTitle,
         date: new Date().toISOString(),
-        audioUrl: recordedAudioUrl || undefined,
+        audioUrl: audioUrl || undefined,
         notes: noteText || undefined,
         duration: duration,
-        status: 'RECORDING',
+        status: audioUrl ? 'COMPLETED' : 'RECORDING',
       });
 
       if (response.success) {
@@ -72,6 +368,7 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
         setRecordedAudioUrl(null);
         setRecordedImages([]);
         setDuration(0);
+        setImageCount(0);
         // Navigate back after short delay
         setTimeout(() => {
           onBack();
@@ -147,7 +444,33 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
 
   return (
     <div className="flex flex-col h-screen bg-[#F7F9FC] text-slate-800 relative font-sans overflow-hidden">
-      
+
+      {/* 隐藏的文件输入 */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="audio/mpeg,audio/wav,audio/m4a,audio/x-m4a,audio/mp3"
+        onChange={handleFileUpload}
+        className="hidden"
+      />
+      {/* 隐藏的图片文件输入 */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+        multiple
+        onChange={handleImageUpload}
+        className="hidden"
+      />
+      {/* 隐藏的文档文件输入 */}
+      <input
+        ref={documentInputRef}
+        type="file"
+        accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        onChange={handleDocumentUpload}
+        className="hidden"
+      />
+
       {/* 【1】顶部状态栏区域 */}
       <div className="pt-10 px-6 pb-2 flex justify-between items-center z-10">
         <div className="flex items-center space-x-1 group cursor-pointer active:opacity-70 transition-opacity">
@@ -244,14 +567,35 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       )}
 
       {/* 【2】课程信息区 - 可点击切换 */}
-      <div 
-        className="px-6 mb-3 z-10 flex items-center cursor-pointer active:opacity-70 transition-opacity group"
-        onClick={() => setShowPicker(true)}
-      >
-        <h1 className="text-3xl font-black tracking-tight text-slate-900 truncate pr-2 max-w-[85%]">{courseName}</h1>
-        <div className="bg-slate-100 p-1 rounded-full text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors">
-            <ChevronDown size={20} />
+      <div className="px-6 mb-3 z-10">
+        {/* 课程选择 */}
+        <div
+          className="flex items-center cursor-pointer active:opacity-70 transition-opacity group"
+          onClick={() => setShowPicker(true)}
+        >
+          <h1 className="text-3xl font-black tracking-tight text-slate-900 truncate pr-2 max-w-[85%]">
+            {coursesLoading ? '加载中...' : courseName || '请选择课程'}
+          </h1>
+          <div className="bg-slate-100 p-1 rounded-full text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors">
+              <ChevronDown size={20} />
+          </div>
         </div>
+        {/* 章节选择 */}
+        {selectedCourseId && (
+          <div
+            className="flex items-center cursor-pointer mt-2 active:opacity-70 transition-opacity group"
+            onClick={() => setShowChapterPicker(true)}
+          >
+            <span className="text-sm font-medium text-slate-500 truncate pr-2">
+              {chapters.length > 0
+                ? chapters.find(c => c.id === selectedChapterId)?.name || '请选择章节'
+                : '暂无章节'}
+            </span>
+            {chapters.length > 0 && (
+              <ChevronDown size={16} className="text-slate-400" />
+            )}
+          </div>
+        )}
       </div>
 
       {/* 【3】AI 语音采集区 */}
@@ -298,11 +642,44 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       {/* 【4】随心记区域 - 拉长高度至 h-60 (约 240px) */}
       <div className="px-6 mb-3 z-10 h-60 flex flex-col">
         <div className="bg-white border border-slate-100 rounded-[28px] p-5 flex-1 flex flex-col shadow-sm">
-            <div className="flex items-center space-x-2 mb-3">
-                <Type size={14} className="text-slate-400" />
-                <h3 className="text-sm font-bold text-slate-700">随心记</h3>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center space-x-2">
+                  <Type size={14} className="text-slate-400" />
+                  <h3 className="text-sm font-bold text-slate-700">随心记</h3>
+              </div>
+              {/* 文档上传按钮 */}
+              {uploadedDocument ? (
+                <button
+                  onClick={removeDocument}
+                  className="text-xs text-red-500 hover:text-red-600 flex items-center gap-1"
+                >
+                  删除文档
+                </button>
+              ) : (
+                <button
+                  onClick={triggerDocumentUpload}
+                  disabled={documentUploading}
+                  className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1 disabled:opacity-50"
+                >
+                  {documentUploading ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Upload size={12} />
+                  )}
+                  上传文档
+                </button>
+              )}
             </div>
-            <textarea 
+            {/* 已上传文档显示 */}
+            {uploadedDocument && (
+              <div className="mb-2 p-2 bg-blue-50 rounded-lg flex items-center justify-between">
+                <span className="text-xs text-blue-600 truncate">{uploadedDocument.originalName}</span>
+                <button onClick={removeDocument} className="text-blue-400 hover:text-blue-600">
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+            <textarea
                 className="flex-1 w-full bg-transparent resize-none outline-none text-sm text-slate-600 placeholder:text-slate-300 leading-relaxed"
                 placeholder="输入关键词或灵感，系统将自动对齐时间轴..."
                 value={noteText}
@@ -313,27 +690,51 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
 
       {/* 【5】多模态采集入口 - 精确调整 mb 使其底端位于暂停按钮上方 3px */}
       <div className="px-6 mb-[131px] z-10 grid grid-cols-2 gap-3">
-        {/* 拍摄入口 */}
-        <button className="bg-white border border-slate-100 rounded-[24px] h-28 flex flex-col items-center justify-center space-y-2 active:scale-95 transition-transform shadow-sm">
+        {/* 拍摄入口 - 点击上传图片 */}
+        <button
+          onClick={triggerImageUpload}
+          disabled={imageUploading}
+          className="bg-white border border-slate-100 rounded-[24px] h-28 flex flex-col items-center justify-center space-y-2 active:scale-95 transition-transform shadow-sm disabled:opacity-50"
+        >
             <div className="w-10 h-10 rounded-full border border-slate-100 bg-slate-50 flex items-center justify-center">
-                <Camera size={20} className="text-slate-400" />
+                {imageUploading ? (
+                  <Loader2 size={20} className="text-blue-500 animate-spin" />
+                ) : (
+                  <Camera size={20} className="text-slate-400" />
+                )}
             </div>
             <div className="text-center">
                 <div className="text-xs font-bold text-slate-700">拍摄</div>
-                <div className="text-[9px] text-slate-400 tracking-wider">智能检测</div>
+                <div className="text-[9px] text-slate-400 tracking-wider">上传图片</div>
             </div>
         </button>
 
-        {/* 图片预览卡片 */}
-        <div className="relative h-28 group cursor-pointer active:scale-95 transition-transform">
+        {/* 图片预览卡片 - 点击查看/上传更多 */}
+        <div
+          onClick={triggerImageUpload}
+          className="relative h-28 group cursor-pointer active:scale-95 transition-transform"
+        >
             <div className="absolute top-1 left-1 right-[-2px] bottom-[-2px] bg-white rounded-[24px] border border-slate-100 -z-10 shadow-sm"></div>
             <div className="w-full h-full bg-white border border-slate-100 rounded-[24px] overflow-hidden flex flex-col shadow-sm">
                 <div className="flex-1 relative bg-slate-100">
-                    <img 
-                        src="https://images.unsplash.com/photo-1517842645767-c639042777db?auto=format&fit=crop&q=80&w=200" 
-                        className="w-full h-full object-cover"
-                        alt="Preview"
-                    />
+                    {uploadedImages.length > 0 ? (
+                      <>
+                        <img
+                          src={uploadedImages[uploadedImages.length - 1].url}
+                          className="w-full h-full object-cover"
+                          alt="Preview"
+                        />
+                        {uploadedImages.length > 1 && (
+                          <div className="absolute top-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded">
+                            +{uploadedImages.length - 1}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-300">
+                        <Camera size={24} />
+                      </div>
+                    )}
                 </div>
                 <div className="bg-slate-900 py-1 flex items-center justify-center space-x-2">
                     <Camera size={10} className="text-white/60" />
@@ -348,9 +749,17 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
         
         <div className="flex items-end justify-between w-full max-w-sm">
             {/* 上传按钮 */}
-            <button className="flex flex-col items-center space-y-1 group active:scale-90 transition-transform translate-y-3">
+            <button
+              onClick={triggerFileUpload}
+              disabled={uploading}
+              className="flex flex-col items-center space-y-1 group active:scale-90 transition-transform translate-y-3 disabled:opacity-50"
+            >
                 <div className="w-14 h-14 bg-white border border-slate-100 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors shadow-sm">
-                    <Upload size={24} />
+                    {uploading ? (
+                      <Loader2 size={24} className="animate-spin" />
+                    ) : (
+                      <Upload size={24} />
+                    )}
                 </div>
                 <span className="text-[10px] font-bold text-slate-400 mt-1">上传</span>
             </button>
@@ -459,6 +868,52 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
                          >
                              <span className="text-xs font-bold">+ 使用自定义课程 "{searchText}"</span>
                          </button>
+                     )}
+                 </div>
+             </div>
+        </div>
+      )}
+
+      {/* 【8】章节选择 Picker (Bottom Sheet) */}
+      {showChapterPicker && selectedCourseId && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center">
+             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in" onClick={() => setShowChapterPicker(false)}></div>
+             <div className="bg-white w-full max-w-md rounded-t-[32px] p-6 z-[110] shadow-2xl animate-in slide-in-from-bottom h-[65vh] flex flex-col">
+                 <div className="flex justify-between items-center mb-6">
+                     <h3 className="text-lg font-black text-slate-800">选择章节</h3>
+                     <button onClick={() => setShowChapterPicker(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200 transition-colors">
+                         <X size={20} />
+                     </button>
+                 </div>
+
+                 {/* 章节列表 */}
+                 <div className="flex-1 overflow-y-auto scrollbar-hide space-y-2.5 pb-6">
+                     {chapters.length === 0 ? (
+                         <div className="text-center py-8 text-slate-400">
+                             该课程暂无章节，请先添加章节
+                         </div>
+                     ) : (
+                         chapters.map((chapter) => {
+                             const isSelected = selectedChapterId === chapter.id;
+                             return (
+                                <button
+                                    key={chapter.id}
+                                    onClick={() => {
+                                        setSelectedChapterId(chapter.id);
+                                        setShowChapterPicker(false);
+                                    }}
+                                    className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all active:scale-98 ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-slate-100 bg-white hover:border-blue-200'}`}
+                                >
+                                    <div className="flex flex-col items-start">
+                                        <span className={`text-sm font-bold ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>
+                                            {chapter.name}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 mt-0.5">排序: #{chapter.order}</span>
+                                    </div>
+                                    {isSelected && <Check size={18} className="text-blue-600" />}
+                                </button>
+                             )
+                         })
                      )}
                  </div>
              </div>

@@ -104,12 +104,50 @@ export async function getRelatedMarks(
   range: number = 30
 ): Promise<ApiResponse<TimeMark[]>> {
   try {
-    return await api.get<TimeMark[]>(`${API_CONFIG.endpoints.studyRecords}/${studyRecordId}/related-marks`, {
-      studyRecordId,
-      timestamp: timestamp.toString(),
+    // 注意：API 返回格式为 { range, results: [{ mark, relatedMarks }] }
+    // 这里我们只需要提取所有标记
+    const response = await api.get<any>(`${API_CONFIG.endpoints.studyRecords}/${studyRecordId}/related-marks`, {
       range: range.toString(),
     })
+    if (response.success && response.data) {
+      // 提取所有相关标记
+      const allMarks: TimeMark[] = []
+      if (response.data.results && Array.isArray(response.data.results)) {
+        response.data.results.forEach((item: any) => {
+          if (item.mark) allMarks.push(item.mark)
+          if (item.relatedMarks && Array.isArray(item.relatedMarks)) {
+            item.relatedMarks.forEach((rm: any) => allMarks.push(rm))
+          }
+        })
+      }
+      return { success: true, data: allMarks }
+    }
+    return response
   } catch (error) {
     return { success: false, error: '获取相关标记失败' }
+  }
+}
+
+// 批量创建时间标记 (Task-1.4.2)
+export interface BatchTimeMarkItem {
+  type: string
+  timestamp: number
+  knowledgePointId?: string
+  pptPage?: number
+  content?: string
+  imageUrl?: string
+}
+
+export async function batchCreateTimeMarks(
+  studyRecordId: string,
+  timeMarks: BatchTimeMarkItem[]
+): Promise<ApiResponse<{ count: number }>> {
+  try {
+    return await api.post<{ count: number }>(
+      `${API_CONFIG.endpoints.studyRecords}/${studyRecordId}/time-marks/batch`,
+      { timeMarks }
+    )
+  } catch (error) {
+    return { success: false, error: '批量添加时间标记失败' }
   }
 }
