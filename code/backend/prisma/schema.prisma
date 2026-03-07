@@ -13,20 +13,23 @@ datasource db {
 // ==================== Core Models ====================
 
 model Course {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   name            String
-  status          String   @default("STUDYING") // STUDYING | REVIEWING | ARCHIVED
-  type            String   @default("PROFESSIONAL") // PROFESSIONAL | CROSS_MAJOR | ELECTIVE
+  status          String    @default("STUDYING") // STUDYING | REVIEWING | ARCHIVED
+  type            String    @default("PROFESSIONAL") // PROFESSIONAL | CROSS_MAJOR | ELECTIVE
   examDate        DateTime?
   reviewStartDate DateTime?
-  targetGrade     String?  // S | A | B | C
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  targetGrade     String? // S | A | B | C
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  chapters        Chapter[]
-  studyRecords    StudyRecord[]
-  examTasks       ExamTask[]
-  mistakes        Mistake[]
+  chapters     Chapter[]
+  studyRecords StudyRecord[]
+  examTasks    ExamTask[]
+  mistakes     Mistake[]
+  // P6 题库系统
+  questions    Question[]
+  examSessions ExamSession[]
 
   @@index([status])
   @@index([examDate])
@@ -34,15 +37,17 @@ model Course {
 }
 
 model Chapter {
-  id             String   @id @default(uuid())
-  courseId       String
-  name           String
-  order          Int
-  createdAt      DateTime @default(now())
+  id        String   @id @default(uuid())
+  courseId  String
+  name      String
+  order     Int
+  createdAt DateTime @default(now())
 
-  course         Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  course          Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
   knowledgePoints KnowledgePoint[]
-  studyRecords   StudyRecord[]
+  studyRecords    StudyRecord[]
+  // P6 题库系统
+  questions       Question[]
 
   @@unique([courseId, order])
   @@index([courseId])
@@ -58,9 +63,11 @@ model KnowledgePoint {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  chapter      Chapter   @relation(fields: [chapterId], references: [id], onDelete: Cascade)
-  mistakes     Mistake[]
-  timeMarks    TimeMark[]
+  chapter   Chapter    @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  mistakes  Mistake[]
+  timeMarks TimeMark[]
+  // P6 题库系统
+  questions Question[]
 
   // 知识图谱关系
   outgoingRelations KnowledgeRelation[] @relation("KnowledgeRelationSource")
@@ -73,20 +80,20 @@ model KnowledgePoint {
 // ==================== Study Records ====================
 
 model StudyRecord {
-  id          String   @id @default(uuid())
-  courseId    String
-  chapterId   String
-  title       String   // 录音标题
-  date        DateTime
-  audioUrl    String
-  duration    Int      // 秒
-  status      String   @default("RECORDING") // RECORDING | PROCESSING | COMPLETED | FAILED
-  notes       String   @default("")
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid())
+  courseId  String
+  chapterId String
+  title     String // 录音标题
+  date      DateTime
+  audioUrl  String
+  duration  Int // 秒
+  status    String   @default("RECORDING") // RECORDING | PROCESSING | COMPLETED | FAILED
+  notes     String   @default("")
+  createdAt DateTime @default(now())
 
-  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  chapter     Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
-  timeMarks   TimeMark[]
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  chapter   Chapter    @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  timeMarks TimeMark[]
 
   @@index([courseId])
   @@index([chapterId])
@@ -95,18 +102,18 @@ model StudyRecord {
 }
 
 model TimeMark {
-  id              String   @id @default(uuid())
-  studyRecordId   String
+  id               String   @id @default(uuid())
+  studyRecordId    String
   knowledgePointId String?
-  type            String   // START | END | EMPHASIS | BOARD_CHANGE | NOTE | QUESTION
-  timestamp       Int      // 毫秒
-  pptPage         Int?     // PPT页码
-  content         String?  // 笔记内容
-  imageUrl        String?  // 图片/板书URL
-  createdAt       DateTime @default(now())
+  type             String // START | END | EMPHASIS | BOARD_CHANGE | NOTE | QUESTION
+  timestamp        Int // 毫秒
+  pptPage          Int? // PPT页码
+  content          String? // 笔记内容
+  imageUrl         String? // 图片/板书URL
+  createdAt        DateTime @default(now())
 
-  studyRecord     StudyRecord     @relation(fields: [studyRecordId], references: [id], onDelete: Cascade)
-  knowledgePoint  KnowledgePoint? @relation(fields: [knowledgePointId], references: [id])
+  studyRecord    StudyRecord     @relation(fields: [studyRecordId], references: [id], onDelete: Cascade)
+  knowledgePoint KnowledgePoint? @relation(fields: [knowledgePointId], references: [id])
 
   @@index([studyRecordId])
   @@index([knowledgePointId])
@@ -116,18 +123,18 @@ model TimeMark {
 // ==================== Exam & Tasks ====================
 
 model ExamTask {
-  id               String   @id @default(uuid())
-  courseId         String
-  type             String   // CHAPTER_REVIEW | MOCK_EXAM | WEAK_POINT
-  scheduledDate    DateTime
-  status           String   @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | SKIPPED
-  estimatedDuration Int      // 分钟
-  round            Int      @default(1) // 1=一轮, 2=二轮, 3=三轮
-  details          String?  // JSON，存储具体任务内容
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                String   @id @default(uuid())
+  courseId          String
+  type              String // CHAPTER_REVIEW | MOCK_EXAM | WEAK_POINT
+  scheduledDate     DateTime
+  status            String   @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | SKIPPED
+  estimatedDuration Int // 分钟
+  round             Int      @default(1) // 1=一轮, 2=二轮, 3=三轮
+  details           String? // JSON，存储具体任务内容
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  course           Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@index([courseId])
   @@index([scheduledDate])
@@ -144,8 +151,8 @@ model Mistake {
   reason           String?
   createdAt        DateTime @default(now())
 
-  course           Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  knowledgePoint   KnowledgePoint @relation(fields: [knowledgePointId], references: [id], onDelete: Cascade)
+  course         Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  knowledgePoint KnowledgePoint @relation(fields: [knowledgePointId], references: [id], onDelete: Cascade)
 
   @@index([courseId])
   @@index([knowledgePointId])
@@ -155,15 +162,15 @@ model Mistake {
 // ==================== Knowledge Graph ====================
 
 model KnowledgeRelation {
-  id             String   @id @default(uuid())
-  sourceId       String   // 源知识点ID
-  targetId       String   // 目标知识点ID
-  relationType   String   // PREREQUISITE | RELATED | EXTENDS | EXAMPLE
-  weight         Int      @default(5) // 关系权重 1-10
-  createdAt      DateTime @default(now())
+  id           String   @id @default(uuid())
+  sourceId     String // 源知识点ID
+  targetId     String // 目标知识点ID
+  relationType String // PREREQUISITE | RELATED | EXTENDS | EXAMPLE
+  weight       Int      @default(5) // 关系权重 1-10
+  createdAt    DateTime @default(now())
 
-  source         KnowledgePoint @relation("KnowledgeRelationSource", fields: [sourceId], references: [id], onDelete: Cascade)
-  target         KnowledgePoint @relation("KnowledgeRelationTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  source KnowledgePoint @relation("KnowledgeRelationSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  target KnowledgePoint @relation("KnowledgeRelationTarget", fields: [targetId], references: [id], onDelete: Cascade)
 
   @@unique([sourceId, targetId, relationType])
   @@index([sourceId])
@@ -181,3 +188,260 @@ model KnowledgeRelation {
 // TaskType: CHAPTER_REVIEW | MOCK_EXAM | WEAK_POINT
 // TaskStatus: PENDING | IN_PROGRESS | COMPLETED | SKIPPED
 // RelationType: PREREQUISITE | RELATED | EXTENDS | EXAMPLE
+
+// ==================== User System (P5.1) ====================
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  email        String   @unique
+  passwordHash String
+  displayName  String?
+  role         String   @default("USER") // USER | ADMIN
+  preferences  String? // JSON 存储用户偏好
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // P4.2 学习进度
+  learningProgress LearningProgress[]
+  // P4.3 复习计划
+  reviewPlans      ReviewPlan[]
+  milestones       Milestone[]
+  // P4.5 学习评估
+  evaluations      LearningEvaluation[]
+  // P5.3 学习提醒
+  reminders        Reminder[]
+  // P6 题库系统
+  answerRecords    AnswerRecord[]
+  examSessions     ExamSession[]
+
+  @@index([email])
+  @@index([username])
+}
+
+// ==================== Learning Progress (P4.2) ====================
+
+model LearningProgress {
+  id               String    @id @default(uuid())
+  userId           String
+  courseId         String
+  chapterId        String?
+  knowledgePointId String?
+  status           String    @default("NOT_STARTED") // NOT_STARTED | LEARNING | MASTERED | WEAK
+  masteryScore     Int? // 0-100
+  studyCount       Int       @default(0)
+  lastStudiedAt    DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, courseId])
+  @@index([knowledgePointId])
+}
+
+// ==================== Review Plan (P4.3) ====================
+
+model ReviewPlan {
+  id               String    @id @default(uuid())
+  userId           String
+  courseId         String
+  knowledgePointId String
+  reviewDate       DateTime
+  reviewCount      Int       @default(1)
+  status           String    @default("PENDING") // PENDING | COMPLETED | SKIPPED
+  completedAt      DateTime?
+  difficulty       String? // easy | medium | hard
+  timeSpent        Int? // 秒
+  notes            String?
+  createdAt        DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, knowledgePointId, reviewDate])
+  @@index([userId, reviewDate])
+}
+
+// ==================== Milestone (P4.2) ====================
+
+model Milestone {
+  id          String    @id @default(uuid())
+  userId      String
+  courseId    String
+  title       String
+  description String?
+  targetDate  DateTime
+  progress    Float     @default(0) // 0-1
+  status      String    @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, courseId])
+}
+
+// ==================== Learning Evaluation (P4.5) ====================
+
+model LearningEvaluation {
+  id           String   @id @default(uuid())
+  userId       String
+  courseId     String
+  timeRange    String // week | month | semester
+  overallScore Int // 0-100
+  grade        String // S | A | B | C | D
+  dimensions   String // JSON 各维度评分
+  strengths    String // JSON array
+  weaknesses   String // JSON array
+  suggestions  String // JSON array
+  trend        String // improving | stable | declining
+  generatedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId, timeRange, generatedAt])
+  @@index([userId, courseId])
+}
+
+// ==================== Reminder System (P5.3) ====================
+
+model Reminder {
+  id               String    @id @default(uuid())
+  userId           String
+  courseId         String? // 关联课程
+  knowledgePointId String? // 关联知识点
+  type             String // study_time | review | exam | goal
+  title            String
+  message          String?
+  scheduledAt      DateTime
+  recurring        String? // JSON: { enabled: boolean, pattern: string, daysOfWeek: number[] }
+  status           String    @default("pending") // pending | completed | cancelled
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, scheduledAt])
+  @@index([userId, status])
+  @@index([knowledgePointId])
+}
+
+// ==================== 题库系统 (P6) ====================
+
+// 题目模型
+model Question {
+  id               String  @id @default(uuid())
+  courseId         String
+  chapterId        String?
+  knowledgePointId String?
+
+  // 题目内容
+  type        String // SINGLE_CHOICE | MULTIPLE_CHOICE | TRUE_FALSE | SHORT_ANSWER | ESSAY
+  content     String // 题目内容（支持Markdown）
+  options     String? // JSON数组：选项内容
+  answer      String // 答案（JSON格式）
+  explanation String? // 解析
+
+  // 题目元数据
+  difficulty Int     @default(5) // 1-10 难度
+  score      Int     @default(10) // 分值
+  timeLimit  Int? // 时间限制（秒）
+  tags       String? // 标签（JSON数组）
+  source     String? // 来源（真题/模拟题/练习题）
+
+  // 统计信息
+  usedCount   Int   @default(0) // 使用次数
+  correctRate Float @default(0) // 正确率
+
+  // 状态
+  status String @default("ACTIVE") // ACTIVE | INACTIVE | REVIEW
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联
+  course         Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  chapter        Chapter?        @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  knowledgePoint KnowledgePoint? @relation(fields: [knowledgePointId], references: [id], onDelete: SetNull)
+
+  // 答题记录
+  answerRecords AnswerRecord[]
+
+  @@index([courseId])
+  @@index([chapterId])
+  @@index([knowledgePointId])
+  @@index([type])
+  @@index([difficulty])
+  @@index([status])
+}
+
+// 答题记录
+model AnswerRecord {
+  id            String  @id @default(uuid())
+  userId        String
+  questionId    String
+  examSessionId String?
+
+  // 答题内容
+  userAnswer String // 用户答案
+  isCorrect  Boolean // 是否正确
+
+  // 答题时间
+  timeSpent  Int? // 花费时间（秒）
+  answeredAt DateTime @default(now())
+
+  // AI 分析
+  aiAnalysis      String? // AI 分析结果
+  suggestedReview String? // 建议复习内容
+
+  // 关联
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question    Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  examSession ExamSession? @relation(fields: [examSessionId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([questionId])
+  @@index([examSessionId])
+  @@index([answeredAt])
+}
+
+// 考试/练习会话
+model ExamSession {
+  id       String  @id @default(uuid())
+  userId   String
+  courseId String?
+
+  // 会话信息
+  type        String // MOCK_EXAM | PRACTICE | RANDOM_TEST | AI_GENERATED
+  title       String
+  description String?
+
+  // 试卷信息
+  questionIds    String? // JSON数组：题目ID列表
+  totalQuestions Int // 总题数
+  totalScore     Int? // 总分
+
+  // 答题情况
+  answeredCount Int    @default(0)
+  correctCount  Int    @default(0)
+  score         Float? // 得分
+
+  // 时间
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  // 状态
+  status String @default("IN_PROGRESS") // IN_PROGRESS | COMPLETED | ABANDONED
+
+  // 关联
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)
+
+  // 答题记录
+  answerRecords AnswerRecord[]
+
+  @@index([userId])
+  @@index([courseId])
+  @@index([status])
+  @@index([startedAt])
+}

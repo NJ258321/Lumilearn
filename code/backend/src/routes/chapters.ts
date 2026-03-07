@@ -81,7 +81,7 @@ router.get('/:id', [
     res.json({
       success: true,
       data: chapter
-    } as ApiResponse<Chapter>)
+    } as unknown as ApiResponse<Chapter>)
   } catch (error: any) {
     console.error('Error fetching chapter:', error)
     res.status(500).json({
@@ -148,7 +148,7 @@ router.post('/', [
     res.status(201).json({
       success: true,
       data: chapter
-    } as ApiResponse<Chapter>)
+    } as unknown as ApiResponse<Chapter>)
   } catch (error: any) {
     console.error('Error creating chapter:', error)
 
@@ -232,7 +232,7 @@ router.put('/:id', [
     res.json({
       success: true,
       data: chapter
-    } as ApiResponse<Chapter>)
+    } as unknown as ApiResponse<Chapter>)
   } catch (error: any) {
     console.error('Error updating chapter:', error)
 

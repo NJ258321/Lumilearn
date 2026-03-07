@@ -319,8 +319,8 @@ router.put('/:id', [
 
     // 如果提供 date 字符串，转换为 Date 对象
     const data: any = { ...updateData }
-    if (updateData.date) {
-      data.date = new Date(updateData.date)
+    if ((updateData as any).date) {
+      data.date = new Date((updateData as any).date)
     }
 
     // 更新学习记录
