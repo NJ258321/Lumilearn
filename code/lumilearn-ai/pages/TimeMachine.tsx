@@ -546,36 +546,36 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
                 <div className="flex-1 overflow-y-auto px-8 pb-12 scrollbar-hide pt-2">
                     <div className="space-y-6 pt-2">
                         {/* 摘要卡片 */}
-                        <div className=”bg-blue-50/80 rounded-2xl p-4 border border-blue-100”>
-                            <p className=”text-sm text-blue-800 leading-relaxed font-bold”>
-                                检测到正在讲解 <span className=”underline decoration-blue-500/50 decoration-4”>”递归实现原理”</span>，已为您关联了可视化演示及深度剖析。
+                        <div className="bg-blue-50/80 rounded-2xl p-4 border border-blue-100">
+                            <p className="text-sm text-blue-800 leading-relaxed font-bold">
+                                检测到正在讲解 <span className="underline decoration-blue-500/50 decoration-4">"递归实现原理"</span>，已为您关联了可视化演示及深度剖析。
                             </p>
                         </div>
 
                         {/* 相关标记导航 - Task 2.3.2 */}
                         {relatedMarks.length > 0 && (
-                            <div className=”bg-slate-50 p-5 rounded-3xl border border-slate-100”>
-                                <div className=”flex items-center space-x-2 mb-4”>
-                                    <Flag size={16} className=”text-purple-600” />
-                                    <span className=”text-sm font-bold text-slate-700”>相关标记</span>
-                                    <span className=”text-xs text-slate-400”>±{RELATED_RANGE}秒</span>
+                            <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100">
+                                <div className="flex items-center space-x-2 mb-4">
+                                    <Flag size={16} className="text-purple-600" />
+                                    <span className="text-sm font-bold text-slate-700">相关标记</span>
+                                    <span className="text-xs text-slate-400">±{RELATED_RANGE}秒</span>
                                 </div>
-                                <div className=”space-y-2”>
+                                <div className="space-y-2">
                                     {relatedMarks.slice(0, 5).map((mark) => (
                                         <button
                                             key={mark.id}
                                             onClick={() => handleSeekTo(mark.timestamp)}
-                                            className=”w-full flex items-center justify-between p-3 bg-white rounded-xl border border-slate-100 hover:border-purple-200 transition-colors”
+                                            className="w-full flex items-center justify-between p-3 bg-white rounded-xl border border-slate-100 hover:border-purple-200 transition-colors"
                                         >
-                                            <div className=”flex items-center gap-3”>
-                                                <span className=”text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded”>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded">
                                                     {Math.floor(mark.timestamp / 60).toString().padStart(2, '0')}:{(mark.timestamp % 60).toString().padStart(2, '0')}
                                                 </span>
-                                                <span className=”text-sm text-slate-700 truncate”>
+                                                <span className="text-sm text-slate-700 truncate">
                                                     {mark.content || mark.data?.noteText || '标记内容'}
                                                 </span>
                                             </div>
-                                            <ChevronRight size={14} className=”text-slate-300” />
+                                            <ChevronRight size={14} className="text-slate-300" />
                                         </button>
                                     ))}
                                 </div>

@@ -48,14 +48,14 @@ export const MOCK_TASK_GROUPS: TaskGroup[] = [
 ];
 
 export const MOCK_COURSES: Course[] = [
-  { id: 'c1', name: '数据结构', lastReview: '2026/01/24', status: 'reviewing', type: 'major', semester: '2024-2025 秋季' },
-  { id: 'c_photo', name: '摄影测量学', lastReview: '2026/01/25', status: 'reviewing', type: 'major', semester: '2024-2025 秋季' },
-  { id: 'c2', name: '高等数学', lastReview: '2026/01/23', status: 'reviewing', type: 'major', semester: '2024-2025 秋季' },
-  { id: 'c4', name: '遥感原理与应用', lastReview: '2026/01/18', status: 'studying', type: 'major', semester: '2024-2025 秋季' },
-  { id: 'c5', name: '近代史纲要', lastReview: '2026/01/15', status: 'studying', type: 'elective', semester: '2024-2025 秋季' },
-  { id: 'c6', name: 'C语言程序设计', status: 'archived', type: 'major', semester: '2023-2024 春季' },
-  { id: 'c7', name: '思想道德修养', status: 'archived', type: 'elective', semester: '2023-2024 春季' },
-  { id: 'c8', name: '线性代数', status: 'archived', type: 'major', semester: '2023-2024 春季' },
+  { id: 'c1', name: '数据结构', lastReview: '2026/01/24', status: 'REVIEWING', type: 'PROFESSIONAL', semester: '2024-2025 秋季', createdAt: '2024-01-01', updatedAt: '2026-01-24' },
+  { id: 'c_photo', name: '摄影测量学', lastReview: '2026/01/25', status: 'REVIEWING', type: 'PROFESSIONAL', semester: '2024-2025 秋季', createdAt: '2024-01-01', updatedAt: '2026-01-25' },
+  { id: 'c2', name: '高等数学', lastReview: '2026/01/23', status: 'REVIEWING', type: 'PROFESSIONAL', semester: '2024-2025 秋季', createdAt: '2024-01-01', updatedAt: '2026-01-23' },
+  { id: 'c4', name: '遥感原理与应用', lastReview: '2026/01/18', status: 'STUDYING', type: 'PROFESSIONAL', semester: '2024-2025 秋季', createdAt: '2024-01-01', updatedAt: '2026-01-18' },
+  { id: 'c5', name: '近代史纲要', lastReview: '2026/01/15', status: 'STUDYING', type: 'ELECTIVE', semester: '2024-2025 秋季', createdAt: '2024-01-01', updatedAt: '2026-01-15' },
+  { id: 'c6', name: 'C语言程序设计', status: 'ARCHIVED', type: 'PROFESSIONAL', semester: '2023-2024 春季', createdAt: '2023-01-01', updatedAt: '2024-06-01' },
+  { id: 'c7', name: '思想道德修养', status: 'ARCHIVED', type: 'ELECTIVE', semester: '2023-2024 春季', createdAt: '2023-01-01', updatedAt: '2024-06-01' },
+  { id: 'c8', name: '线性代数', status: 'ARCHIVED', type: 'PROFESSIONAL', semester: '2023-2024 春季', createdAt: '2023-01-01', updatedAt: '2024-06-01' },
 ];
 
 export const MOCK_TRANSCRIPT: TranscriptSegment[] = [

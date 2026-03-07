@@ -7,6 +7,7 @@ export interface ApiResponse<T = unknown> {
   success: boolean
   data?: T
   error?: string
+  code?: string  // 错误码
   details?: ValidationError[]
 }
 
@@ -53,6 +54,9 @@ export interface Course {
   examDate?: string
   createdAt: string
   updatedAt: string
+  // 额外属性用于前端展示
+  lastReview?: string
+  semester?: string
 }
 
 // 章节类型
@@ -102,11 +106,18 @@ export interface StudyRecord {
 // 时间标记类型
 export type TimeMarkType = 'START' | 'END' | 'EMPHASIS' | 'BOARD_CHANGE' | 'NOTE' | 'QUESTION'
 
+export interface TimeMarkData {
+  pptPage?: number
+  noteText?: string
+  imageUrl?: string
+}
+
 export interface TimeMark {
   id: string
   studyRecordId: string
   timestamp: number  // 后端是毫秒
   type: TimeMarkType
+  data?: TimeMarkData
   pptPage?: number
   content?: string  // 后端用 content 字段
   imageUrl?: string

@@ -1,20 +1,23 @@
 // =====================================================
 // ImageUploader - 图片上传组件
-// 支持图片预览、压缩（可选）、上传回调
+// 支持图片预览、上传、删除已上传图片
 // =====================================================
 
-import React, { useState, useRef, useCallback } from 'react'
-import { Upload, X, Image, Loader2, CheckCircle, AlertCircle, Plus, Trash2 } from 'lucide-react'
-import { uploadImage } from '../api/upload'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
+import { Upload, X, Image, Loader2, CheckCircle, AlertCircle, Plus, Trash2, ExternalLink } from 'lucide-react'
+import { uploadImage, deleteFile, getFileInfo } from '../api/upload'
 
 interface ImageUploaderProps {
   onSuccess?: (urls: string[]) => void
   onError?: (error: string) => void
+  onDelete?: (url: string) => void
   maxSizeMB?: number
   maxCount?: number
   acceptedFormats?: string[]
   label?: string
   multiple?: boolean
+  // 已上传的图片URL列表（用于编辑模式）
+  initialImages?: string[]
 }
 
 const DEFAULT_ACCEPTED_FORMATS = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
@@ -24,21 +27,42 @@ const DEFAULT_MAX_COUNT = 9
 const ImageUploader: React.FC<ImageUploaderProps> = ({
   onSuccess,
   onError,
+  onDelete,
   maxSizeMB = DEFAULT_MAX_SIZE_MB,
   maxCount = DEFAULT_MAX_COUNT,
   acceptedFormats = DEFAULT_ACCEPTED_FORMATS,
   label = '上传图片',
   multiple = true,
+  initialImages = [],
 }) => {
   // State
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
+  // 已上传的图片列表（URL和上传后的filename对应）
+  const [uploadedImages, setUploadedImages] = useState<Array<{ url: string; filename: string }>>([])
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  // 删除确认
+  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; index: number; url: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 初始化已上传的图片
+  useEffect(() => {
+    if (initialImages.length > 0) {
+      const images = initialImages.map(url => {
+        const info = getFileInfo(url)
+        return { url, filename: info?.filename || '' }
+      })
+      setUploadedImages(images)
+    }
+  }, [initialImages])
+
+  // 计算剩余可上传数量
+  const remainingSlots = maxCount - selectedFiles.length - uploadedImages.length
 
   // Validate single file
   const validateFile = (file: File): string | null => {
@@ -58,23 +82,22 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
   // Handle file selection
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
+    const files = Array.from(e.target.files || []) as File[]
     if (files.length === 0) return
 
     // Reset state
     setError(null)
     setSuccess(false)
 
-    // Check max count
-    const remaining = maxCount - selectedFiles.length
-    if (remaining <= 0) {
+    // Check max count (考虑已上传的图片)
+    if (remainingSlots <= 0) {
       setError(`最多只能上传 ${maxCount} 张图片`)
       onError?.(`最多只能上传 ${maxCount} 张图片`)
       return
     }
 
     // Limit files to remaining slots
-    const filesToAdd = multiple ? files.slice(0, remaining) : [files[0]]
+    const filesToAdd = multiple ? files.slice(0, remainingSlots) : [files[0]]
 
     // Validate all files
     const invalidFiles: string[] = []
@@ -163,13 +186,52 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     }
   }
 
-  // Handle clear all
+  // Handle clear all (只清空待上传的，不清空已上传的)
   const handleClearAll = () => {
     previewUrls.forEach(url => URL.revokeObjectURL(url))
     setSelectedFiles([])
     setPreviewUrls([])
     setError(null)
     setSuccess(false)
+  }
+
+  // 删除已上传的图片
+  const handleDeleteUploaded = async () => {
+    if (!deleteConfirm) return
+
+    setDeleting(true)
+    const { index, url } = deleteConfirm
+
+    try {
+      const image = uploadedImages[index]
+      if (image && image.filename) {
+        const response = await deleteFile(image.filename)
+        if (!response.success) {
+          throw new Error(response.error || '删除失败')
+        }
+      }
+
+      // 从列表中移除
+      setUploadedImages(prev => prev.filter((_, i) => i !== index))
+      onDelete?.(url)
+      setDeleteConfirm(null)
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : '删除失败，请重试'
+      setError(errorMsg)
+      onError?.(errorMsg)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  // 打开删除确认
+  const openDeleteConfirm = (index: number, url: string) => {
+    setDeleteConfirm({ show: true, index, url })
+  }
+
+  // 取消删除
+  const cancelDelete = () => {
+    setDeleteConfirm(null)
   }
 
   // Format file size
@@ -179,7 +241,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  const canAddMore = selectedFiles.length < maxCount
+  const canAddMore = remainingSlots > 0
 
   return (
     <div className="w-full">
@@ -192,6 +254,46 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         multiple={multiple}
         className="hidden"
       />
+
+      {/* 已上传的图片列表 */}
+      {uploadedImages.length > 0 && (
+        <div className="mb-4">
+          <p className="text-sm font-medium text-slate-600 mb-2">已上传图片 ({uploadedImages.length}/{maxCount})</p>
+          <div className="grid grid-cols-3 gap-3">
+            {uploadedImages.map((image, index) => (
+              <div
+                key={index}
+                className="relative aspect-square rounded-lg overflow-hidden bg-slate-100 border border-slate-200 group"
+              >
+                <img
+                  src={image.url}
+                  alt={`已上传 ${index + 1}`}
+                  className="w-full h-full object-cover"
+                />
+
+                {/* Overlay on hover */}
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <button
+                    onClick={() => openDeleteConfirm(index, image.url)}
+                    className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30 transition-colors"
+                    title="删除"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+
+                {/* Delete button always visible */}
+                <button
+                  onClick={() => openDeleteConfirm(index, image.url)}
+                  className="absolute top-1 right-1 p-1 bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Upload area - show when can add more */}
       {canAddMore && (
@@ -306,6 +408,46 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
               className="h-full bg-blue-500 transition-all duration-300"
               style={{ width: `${uploadProgress}%` }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* 删除确认对话框 */}
+      {deleteConfirm?.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl p-6 max-w-sm mx-4 shadow-xl">
+            <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
+              <AlertCircle size={24} className="text-red-600" />
+            </div>
+            <h3 className="text-lg font-medium text-center text-slate-800 mb-2">
+              确认删除
+            </h3>
+            <p className="text-sm text-slate-500 text-center mb-6">
+              确定要删除这张图片吗？删除后无法恢复。
+            </p>
+            <div className="flex space-x-3">
+              <button
+                onClick={cancelDelete}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-600 rounded-lg font-medium hover:bg-slate-50 disabled:opacity-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleDeleteUploaded}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin mr-2" />
+                    删除中...
+                  </>
+                ) : (
+                  '删除'
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

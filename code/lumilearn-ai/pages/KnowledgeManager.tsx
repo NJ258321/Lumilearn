@@ -184,7 +184,6 @@ const KnowledgeManager: React.FC<KnowledgeManagerProps> = ({ onNavigate }) => {
       const response = await createKnowledgePoint({
         chapterId: selectedChapterId,
         name: createFormData.name.trim(),
-        description: createFormData.description.trim() || undefined,
         status: createFormData.status,
         importance: createFormData.importance
       });

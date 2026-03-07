@@ -2,10 +2,13 @@
 // LumiTrace AI - API 请求封装
 // =====================================================
 
-import type { ApiResponse, ValidationError } from '../../types'
+import type { ApiResponse } from '../types'
 
 // 全局配置
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
+
+// 导入错误处理
+import { getErrorMessage, isNetworkError } from './errorMessages'
 
 /**
  * API 客户端类
@@ -40,9 +43,16 @@ class ApiClient {
 
       // 处理业务层错误
       if (!response.ok || !data.success) {
+        // 尝试从响应中获取错误码
+        const errorCode = data.code
+        const originalError = data.error
+        // 使用错误码映射转换为友好提示
+        const friendlyError = getErrorMessage(errorCode, originalError)
+
         return {
           success: false,
-          error: data.error || `HTTP ${response.status}: ${response.statusText}`,
+          error: friendlyError,
+          code: errorCode,
           details: data.details,
         }
       }
@@ -51,9 +61,17 @@ class ApiClient {
     } catch (error: unknown) {
       // 处理网络错误
       console.error('[API Error]', error)
+
+      let errorMessage = '网络错误，请检查网络连接'
+      if (isNetworkError(error)) {
+        errorMessage = '无法连接到服务器，请检查网络连接'
+      } else if (error instanceof Error) {
+        errorMessage = error.message
+      }
+
       return {
         success: false,
-        error: error instanceof Error ? error.message : '网络错误，请检查网络连接',
+        error: errorMessage,
       }
     }
   }
@@ -123,6 +141,10 @@ export const api = new ApiClient(API_BASE_URL)
 // 导出类以便扩展
 export { ApiClient }
 
+// 导出错误处理工具函数
+export { getErrorMessage, isNetworkError, ERROR_MESSAGES } from './errorMessages'
+export type { ErrorCode } from './errorMessages'
+
 // 导出配置常量
 export const API_CONFIG = {
   BASE_URL: API_BASE_URL,
@@ -144,5 +166,21 @@ export const API_CONFIG = {
     uploadAudio: '/api/upload/audio',
     uploadImage: '/api/upload/image',
     uploadDocument: '/api/upload/document',
+    uploadBase: '/api/upload',
+    // 音频处理
+    audioMetadata: '/api/audio',  // :id/metadata
+    audioTranscribe: '/api/audio',  // :id/transcribe
+    audioTranscribeStatus: '/api/audio/transcribe/status',
+    audioSegment: '/api/audio',  // :id/segment
+    // 知识关系
+    knowledgeRelations: '/api/knowledge-relations',
+    knowledgeRelationsBatch: '/api/knowledge-relations/batch',
+    // AI服务
+    aiExplain: '/api/ai/explain',
+    aiSuggest: '/api/ai/suggest',
+    aiAnalyzeWeakPoints: '/api/ai/analyze-weak-points',
+    aiSearchResources: '/api/ai/search-resources',
+    audioVad: '/api/audio',  // :id/vad
+    audioVadStatus: '/api/audio/vad/status',
   },
 } as const

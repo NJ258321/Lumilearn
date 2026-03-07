@@ -813,7 +813,8 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
 
                 <div className="flex-1 overflow-y-auto px-6 pb-6 mt-2">
                     <div className="space-y-4">
-                        <div className="flex items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 active:bg-blue-50 active:border-blue-100 transition-colors cursor-pointer" onClick={() => onNavigate(AppView.TIME_MACHINE, record.id)}>
+                        {studyRecords[0] && (
+                        <div className="flex items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 active:bg-blue-50 active:border-blue-100 transition-colors cursor-pointer" onClick={() => onNavigate(AppView.TIME_MACHINE, studyRecords[0].id)}>
                             <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 mr-4">
                                 <Target size={20} />
                             </div>
@@ -825,6 +826,7 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
                                 <Play size={14} className="text-slate-400 ml-0.5" fill="currentColor"/>
                             </div>
                         </div>
+                        )}
 
                         <div className="flex items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
                             <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 mr-4">

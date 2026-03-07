@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, Square, Camera, Flag, Upload, ArrowLeft, ChevronDown, Play, Zap, Type, X, Search, Check, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { Course, Chapter } from '../types';
+import { MOCK_COURSES } from '../constants';
 import { getCourseList } from '../src/api/courses';
 import { getChapterList } from '../src/api/chapters';
 import { createStudyRecord } from '../src/api/studyRecords';
@@ -91,11 +92,6 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
     }
   }, [selectedCourseId, courses, fetchChapters]);
 
-  // 过滤课程列表
-  const filteredCourses = courses.filter(c =>
-    c.name.toLowerCase().includes(searchText.toLowerCase())
-  );
-
   // API State
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -172,7 +168,8 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
 
     // 验证文件
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
-    const validFiles = Array.from(files).filter(file => {
+    const fileArray = Array.prototype.slice.call(files) as File[];
+    const validFiles = fileArray.filter((file: File) => {
       if (!allowedTypes.includes(file.type)) {
         setError(`不支持 ${file.name} 格式，仅支持 JPG、PNG、GIF、WebP 格式`);
         return false;
@@ -850,7 +847,7 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
                             >
                                 <div className="flex flex-col items-start">
                                     <span className={`text-sm font-bold ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>{course.name}</span>
-                                    <span className="text-[10px] text-slate-400 mt-0.5">{course.semester} · {course.type === 'major' ? '专业课' : '选修'}</span>
+                                    <span className="text-[10px] text-slate-400 mt-0.5">{course.semester} · {course.type === 'PROFESSIONAL' ? '专业课' : '选修'}</span>
                                 </div>
                                 {isSelected && <Check size={18} className="text-blue-600" />}
                             </button>

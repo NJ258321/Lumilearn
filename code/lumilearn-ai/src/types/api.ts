@@ -7,6 +7,7 @@ export interface ApiResponse<T = unknown> {
   success: boolean
   data?: T
   error?: string
+  code?: string  // 错误码
   details?: ValidationError[]
 }
 
@@ -53,6 +54,9 @@ export interface Course {
   examDate?: string
   createdAt: string
   updatedAt: string
+  // 额外属性用于前端展示
+  lastReview?: string
+  semester?: string
 }
 
 // ========== 章节类型 ==========

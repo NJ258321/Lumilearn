@@ -205,7 +205,6 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate, cours
       const response = await createKnowledgePoint({
         chapterId: knowledgeFormData.chapterId,
         name: knowledgeFormData.name,
-        description: knowledgeFormData.description,
       });
       if (response.success) {
         setShowKnowledgeModal(false);

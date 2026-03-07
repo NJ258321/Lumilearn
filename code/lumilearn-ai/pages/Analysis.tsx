@@ -272,7 +272,7 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
                         >
                             <div className="flex flex-col items-start">
                                 <span className={`text-sm font-bold ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>{course.name}</span>
-                                <span className="text-[10px] text-slate-400 mt-0.5">{course.semester} · {course.type === 'major' ? '专业课' : '选修'}</span>
+                                <span className="text-[10px] text-slate-400 mt-0.5">{course.semester} · {course.type === 'PROFESSIONAL' ? '专业课' : '选修'}</span>
                             </div>
                             {isSelected && <Check size={18} className="text-blue-600" />}
                         </button>

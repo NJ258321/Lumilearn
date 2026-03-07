@@ -54,7 +54,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const fetchRecentKps = useCallback(async () => {
     setRecentKpsLoading(true);
     try {
-      const response = await getRecentlyReviewed({ limit: 5 });
+      const response = await getRecentlyReviewed({ pageSize: 5 });
       if (response.success && response.data) {
         setRecentKps(response.data);
       }
