@@ -33,7 +33,7 @@ router.get('/:id/metadata', async (req: Request, res: Response) => {
           select: { id: true, name: true }
         },
         timeMarks: {
-          select: { id: true, knowledgePointId: true }
+          select: { id: true, knowledgePointId: true, type: true }
         }
       }
     })

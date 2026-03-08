@@ -147,7 +147,7 @@ router.get('/:id', [
     res.json({
       success: true,
       data: knowledgePoint
-    } as ApiResponse<KnowledgePoint>)
+    } as unknown as ApiResponse<KnowledgePoint>)
   } catch (error: any) {
     console.error('Error fetching knowledge point:', error)
     res.status(500).json({
@@ -199,7 +199,7 @@ router.post('/', [
     res.status(201).json({
       success: true,
       data: knowledgePoint
-    } as ApiResponse<KnowledgePoint>)
+    } as unknown as ApiResponse<KnowledgePoint>)
   } catch (error: any) {
     console.error('Error creating knowledge point:', error)
 
@@ -258,7 +258,7 @@ router.put('/:id', [
     res.json({
       success: true,
       data: knowledgePoint
-    } as ApiResponse<KnowledgePoint>)
+    } as unknown as ApiResponse<KnowledgePoint>)
   } catch (error: any) {
     console.error('Error updating knowledge point:', error)
 
@@ -314,7 +314,7 @@ router.patch('/:id/mastery', [
     res.json({
       success: true,
       data: knowledgePoint
-    } as ApiResponse<KnowledgePoint>)
+    } as unknown as ApiResponse<KnowledgePoint>)
   } catch (error: any) {
     console.error('Error updating mastery score:', error)
 
@@ -609,7 +609,7 @@ router.put('/batch/status', [
       return res.status(404).json({
         success: false,
         error: 'Some knowledge points not found',
-        details: notFoundIds
+        details: notFoundIds.map(id => ({ field: 'id', message: id }))
       } as ApiResponse<undefined>)
     }
 

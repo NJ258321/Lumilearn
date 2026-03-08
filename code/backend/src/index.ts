@@ -6,6 +6,9 @@ import path from 'path'
 // Load environment variables
 dotenv.config()
 
+// Import services
+import { initReminderService, stopReminderService } from './services/reminder.js'
+
 // Import routes
 import courseRoutes from './routes/courses.js'
 import chapterRoutes from './routes/chapters.js'
@@ -18,6 +21,17 @@ import mistakeRoutes from './routes/mistakes.js'
 import audioRoutes from './routes/audio.js'
 import knowledgeRelationRoutes from './routes/knowledge-relations.js'
 import aiRoutes from './routes/ai.js'
+import statisticsRoutes from './routes/statistics.js'
+import progressRoutes from './routes/progress.js'
+import reviewRoutes from './routes/review.js'
+import analysisRoutes from './routes/analysis.js'
+import authRoutes from './routes/auth.js'
+import recommendationRoutes from './routes/recommendation.js'
+import reminderRoutes from './routes/reminder.js'
+import exportRoutes from './routes/export.js'
+import settingsRoutes from './routes/settings.js'
+import questionRoutes from './routes/questions.js'
+import examRoutes from './routes/exams.js'
 
 // Initialize Express app
 const app = express()
@@ -63,11 +77,22 @@ app.use('/api/knowledge-points', knowledgePointRoutes)
 app.use('/api/study-records', studyRecordRoutes)
 app.use('/api/time-marks', timeMarkRoutes)
 app.use('/api/upload', uploadRoutes)
+app.use('/api/exams', examRoutes)
 app.use('/api/exam-tasks', examTaskRoutes)
 app.use('/api/mistakes', mistakeRoutes)
 app.use('/api/audio', audioRoutes)
 app.use('/api', knowledgeRelationRoutes)
 app.use('/api', aiRoutes)
+app.use('/api', statisticsRoutes)
+app.use('/api', progressRoutes)
+app.use('/api', reviewRoutes)
+app.use('/api', analysisRoutes)
+app.use('/api', authRoutes)
+app.use('/api', recommendationRoutes)
+app.use('/api', reminderRoutes)
+app.use('/api', exportRoutes)
+app.use('/api', settingsRoutes)
+app.use('/api', questionRoutes)
 
 // ==================== Error Handlers ====================
 
@@ -90,7 +115,20 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
 // ==================== Start Server ====================
 
+// 优雅退出处理
+const gracefulShutdown = () => {
+  console.log('\n[Server] 收到关闭信号，正在清理...')
+  stopReminderService()
+  process.exit(0)
+}
+
+process.on('SIGTERM', gracefulShutdown)
+process.on('SIGINT', gracefulShutdown)
+
 app.listen(PORT, () => {
+  // 初始化定时提醒服务
+  initReminderService()
+
   console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║                                                            ║
@@ -101,6 +139,8 @@ app.listen(PORT, () => {
 ║                                                            ║
 ║         📊 API Health: http://localhost:${PORT}/health            ║
 ║         📁 Uploads: http://localhost:${PORT}/uploads            ║
+║                                                            ║
+║         ⏰ Reminder Service: Active                         ║
 ║                                                            ║
 ╚════════════════════════════════════════════════════════════╝
   `)

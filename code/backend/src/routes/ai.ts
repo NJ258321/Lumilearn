@@ -311,7 +311,7 @@ router.post('/ai/analyze-weak-points', [
         },
         mistakeRate,
         reviewMissCount,
-        lastReviewDate: kp.updatedAt,
+        lastReviewDate: kp.updatedAt.toISOString(),
         avgTimeSpent: 15, // 估算值
         errorPatterns: [] // 可后续扩展
       }
@@ -482,6 +482,7 @@ router.post('/ai/chat', [
 
     // 调用 AI 服务
     const response = await geminiService.chat(message, {
+      messages: [{ role: 'user', content: message }],
       systemInstruction: systemInstruction || '你是一位学习助手，请用中文回答用户的问题。'
     })
 

@@ -2,8 +2,7 @@ import {
   GoogleGenerativeAI,
   HarmCategory,
   HarmBlockThreshold,
-  GenerationConfig,
-  StreamPart
+  GenerationConfig
 } from '@google/generative-ai'
 import type { KnowledgePoint } from '../types/index.js'
 
