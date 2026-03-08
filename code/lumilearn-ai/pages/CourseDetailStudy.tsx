@@ -1,9 +1,11 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
-import { ArrowLeft, Edit3, Trash2, Calendar, MapPin, CheckCircle2, RotateCcw, Zap, Mic, Plus, Lock, MoreHorizontal, BookOpen, FileText, Settings, Minus, ChevronRight, Loader2, AlertCircle, X, Filter, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Edit3, Trash2, Calendar, MapPin, CheckCircle2, RotateCcw, Zap, Mic, Plus, Lock, MoreHorizontal, BookOpen, FileText, Settings, Minus, ChevronRight, Loader2, AlertCircle, X, Filter, AlertTriangle, TrendingUp, Clock, Target, Brain } from 'lucide-react';
 import { AppView } from '../types';
 import { getChapterList, createChapter, updateChapter, deleteChapter } from '../src/api/chapters';
 import { getKnowledgePointList, createKnowledgePoint, updateKnowledgePoint, deleteKnowledgePoint, updateMastery, getWeakPoints, batchCreateKnowledgePoints, batchUpdateStatus } from '../src/api/knowledgePoints';
-import type { Chapter, KnowledgePoint } from '../types';
+import { getCourseProgress } from '../src/api/progress';
+import { getCourseOverview } from '../src/api/statistics';
+import type { Chapter, KnowledgePoint, CourseProgress, CourseOverview } from '../types';
 
 interface CourseDetailStudyProps {
   onNavigate: (view: AppView, data?: any) => void;
@@ -197,6 +199,38 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate, cours
     }
   }, [showWeakPointsOnly]);
 
+  // P4 - Fetch Course Progress
+  const fetchCourseProgress = useCallback(async () => {
+    if (!courseId) return;
+    setStatsLoading(true);
+    try {
+      const response = await getCourseProgress(courseId);
+      if (response.success && response.data) {
+        setCourseProgress(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch course progress:', err);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [courseId]);
+
+  // P4 - Fetch Course Overview Statistics
+  const fetchCourseOverview = useCallback(async () => {
+    if (!courseId) return;
+    setStatsLoading(true);
+    try {
+      const response = await getCourseOverview(courseId);
+      if (response.success && response.data) {
+        setCourseOverview(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch course overview:', err);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [courseId]);
+
   // Create Knowledge Point
   const handleCreateKnowledgePoint = async () => {
     if (!knowledgeFormData.name.trim() || !knowledgeFormData.chapterId) return;
@@ -298,6 +332,11 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate, cours
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [batchStatus, setBatchStatus] = useState<string>('NEED_REVIEW');
   const [showBatchStatusModal, setShowBatchStatusModal] = useState(false);
+
+  // P4 - Course Progress & Statistics State
+  const [courseProgress, setCourseProgress] = useState<CourseProgress | null>(null);
+  const [courseOverview, setCourseOverview] = useState<CourseOverview | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   // Batch Import Handler
   const handleBatchImport = async () => {
@@ -472,7 +511,10 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate, cours
   // Initial fetch
   useEffect(() => {
     fetchChapters();
-  }, [fetchChapters]);
+    // P4 - Fetch course progress and statistics
+    fetchCourseProgress();
+    fetchCourseOverview();
+  }, [fetchChapters, fetchCourseProgress, fetchCourseOverview]);
   
   // Focus state
   const [focusedChapterId, setFocusedChapterId] = useState<string | null>(null);
@@ -1074,6 +1116,74 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate, cours
                  </button>
              </div>
         </div>
+
+        {/* P4 - Course Progress & Statistics Header */}
+        {!statsLoading && (courseProgress || courseOverview) && (
+          <div className="absolute top-24 left-0 right-0 z-20 px-6 pointer-events-none">
+            <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-slate-100 mx-auto max-w-md">
+              {/* Progress Bar */}
+              <div className="mb-3">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs font-bold text-slate-600 flex items-center">
+                    <TrendingUp size={12} className="mr-1 text-blue-500" />
+                    学习进度
+                  </span>
+                  <span className="text-xs font-bold text-blue-600">
+                    {courseProgress ? Math.round(courseProgress.overallProgress * 100) : 0}%
+                  </span>
+                </div>
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-500"
+                    style={{ width: `${(courseProgress?.overallProgress || 0) * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Stats Grid */}
+              <div className="grid grid-cols-4 gap-2">
+                {/* Chapters */}
+                <div className="text-center">
+                  <p className="text-lg font-bold text-slate-800">
+                    {courseProgress?.completedChapters || 0}/{courseProgress?.totalChapters || 0}
+                  </p>
+                  <p className="text-[10px] text-slate-400">章节</p>
+                </div>
+                {/* Knowledge Points */}
+                <div className="text-center">
+                  <p className="text-lg font-bold text-slate-800">
+                    {courseProgress?.completedKnowledgePoints || 0}/{courseProgress?.totalKnowledgePoints || 0}
+                  </p>
+                  <p className="text-[10px] text-slate-400">知识点</p>
+                </div>
+                {/* Study Time */}
+                <div className="text-center">
+                  <p className="text-lg font-bold text-slate-800">
+                    {courseOverview ? Math.round(courseOverview.totalStudyTime / 3600) : 0}h
+                  </p>
+                  <p className="text-[10px] text-slate-400">总学时</p>
+                </div>
+                {/* Mastery */}
+                <div className="text-center">
+                  <p className="text-lg font-bold text-purple-600">
+                    {courseOverview?.averageMasteryScore || 0}
+                  </p>
+                  <p className="text-[10px] text-slate-400">掌握度</p>
+                </div>
+              </div>
+
+              {/* Next Suggestion */}
+              {courseProgress?.nextSuggestion && (
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <p className="text-[10px] text-slate-500 flex items-center">
+                    <Target size={10} className="mr-1 text-amber-500" />
+                    {courseProgress.nextSuggestion}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* --- 2. DYNAMIC VIEWPORT CANVAS --- */}
         <div 

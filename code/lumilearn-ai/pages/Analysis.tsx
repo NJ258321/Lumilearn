@@ -1,8 +1,11 @@
 
-import React, { useMemo, useState } from 'react';
-import { HelpCircle, AlertCircle, ChevronRight, PlayCircle, Info, BookOpen, ChevronDown, Check, X, Target, Zap, Clock, MessageSquare, Bot, Search } from 'lucide-react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { HelpCircle, AlertCircle, ChevronRight, PlayCircle, Info, BookOpen, ChevronDown, Check, X, Target, Zap, Clock, MessageSquare, Bot, Search, TrendingUp, Brain, BarChart3, Activity, Loader2 } from 'lucide-react';
 import { AppView } from '../types';
 import { MOCK_COURSES } from '../constants';
+import { getKnowledgeMastery } from '../src/api/statistics';
+import { getKnowledgeCorrelation, getLearningSequence, getBottlenecks, generateEvaluation, getLearningEfficiency, getComparisonAnalysis } from '../src/api/analysis';
+import type { KnowledgeMastery, KnowledgeCorrelationResponse, LearningSequenceResponse, BottleneckResponse, LearningEvaluation, LearningEfficiency, ComparisonAnalysis, GenerateEvaluationRequest } from '../types';
 
 interface AnalysisProps {
   onNavigate: (view: AppView) => void;
@@ -13,9 +16,165 @@ interface AnalysisProps {
 const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCourseChange }) => {
   const [showPicker, setShowPicker] = useState(false);
   const [searchText, setSearchText] = useState('');
-  
+  const [activeTab, setActiveTab] = useState<'weak' | 'mastery' | 'correlation' | 'sequence' | 'bottleneck' | 'evaluation' | 'efficiency' | 'compare'>('weak');
+
   // 本地状态管理当前选中的课程名称，初始化为高等数学或传入的课程
   const [selectedCourseName, setSelectedCourseName] = useState("高等数学");
+
+  // P4 - Analysis Data State
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [knowledgeMastery, setKnowledgeMastery] = useState<KnowledgeMastery | null>(null);
+  const [knowledgeCorrelation, setKnowledgeCorrelation] = useState<KnowledgeCorrelationResponse | null>(null);
+  const [learningSequence, setLearningSequence] = useState<LearningSequenceResponse | null>(null);
+  const [bottlenecks, setBottlenecks] = useState<BottleneckResponse | null>(null);
+  const [evaluation, setEvaluation] = useState<LearningEvaluation | null>(null);
+  const [efficiency, setEfficiency] = useState<LearningEfficiency | null>(null);
+  const [comparison, setComparison] = useState<ComparisonAnalysis | null>(null);
+
+  // P4 - Fetch Knowledge Mastery
+  const fetchKnowledgeMastery = useCallback(async () => {
+    if (!currentCourseId) return;
+    setAnalysisLoading(true);
+    try {
+      const response = await getKnowledgeMastery(currentCourseId);
+      if (response.success && response.data) {
+        setKnowledgeMastery(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch knowledge mastery:', err);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, [currentCourseId]);
+
+  // P4 - Fetch Knowledge Correlation
+  const fetchKnowledgeCorrelation = useCallback(async () => {
+    if (!currentCourseId) return;
+    setAnalysisLoading(true);
+    try {
+      const response = await getKnowledgeCorrelation(currentCourseId);
+      if (response.success && response.data) {
+        setKnowledgeCorrelation(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch knowledge correlation:', err);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, [currentCourseId]);
+
+  // P4 - Fetch Learning Sequence
+  const fetchLearningSequence = useCallback(async () => {
+    if (!currentCourseId) return;
+    setAnalysisLoading(true);
+    try {
+      const response = await getLearningSequence(currentCourseId);
+      if (response.success && response.data) {
+        setLearningSequence(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch learning sequence:', err);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, [currentCourseId]);
+
+  // P4 - Fetch Bottlenecks
+  const fetchBottlenecks = useCallback(async () => {
+    if (!currentCourseId) return;
+    setAnalysisLoading(true);
+    try {
+      const response = await getBottlenecks(currentCourseId);
+      if (response.success && response.data) {
+        setBottlenecks(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch bottlenecks:', err);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, [currentCourseId]);
+
+  // P4 - Generate Evaluation
+  const fetchEvaluation = useCallback(async () => {
+    if (!currentCourseId) return;
+    setAnalysisLoading(true);
+    try {
+      const params: GenerateEvaluationRequest = {
+        courseId: currentCourseId,
+        timeRange: 'month',
+        includeDetails: true
+      };
+      const response = await generateEvaluation(params);
+      if (response.success && response.data) {
+        setEvaluation(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch evaluation:', err);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, [currentCourseId]);
+
+  // P4 - Fetch Efficiency
+  const fetchEfficiency = useCallback(async () => {
+    if (!currentCourseId) return;
+    setAnalysisLoading(true);
+    try {
+      const response = await getLearningEfficiency(currentCourseId);
+      if (response.success && response.data) {
+        setEfficiency(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch efficiency:', err);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, [currentCourseId]);
+
+  // P4 - Fetch Comparison
+  const fetchComparison = useCallback(async () => {
+    if (!currentCourseId) return;
+    setAnalysisLoading(true);
+    try {
+      const response = await getComparisonAnalysis(currentCourseId);
+      if (response.success && response.data) {
+        setComparison(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch comparison:', err);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, [currentCourseId]);
+
+  // Tab change handler
+  const handleTabChange = (tab: typeof activeTab) => {
+    setActiveTab(tab);
+    switch (tab) {
+      case 'mastery':
+        fetchKnowledgeMastery();
+        break;
+      case 'correlation':
+        fetchKnowledgeCorrelation();
+        break;
+      case 'sequence':
+        fetchLearningSequence();
+        break;
+      case 'bottleneck':
+        fetchBottlenecks();
+        break;
+      case 'evaluation':
+        fetchEvaluation();
+        break;
+      case 'efficiency':
+        fetchEfficiency();
+        break;
+      case 'compare':
+        fetchComparison();
+        break;
+    }
+  };
 
   const weakPoints = [
     {
@@ -201,10 +360,236 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
               </div>
             </div>
           </div>
+
+          {/* P4 - Advanced Analysis Tabs */}
+          <div className="mb-4">
+            <h2 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3 px-1">P4 数据分析</h2>
+
+            {/* Tab Navigation */}
+            <div className="flex space-x-2 overflow-x-auto pb-3 scrollbar-hide">
+              {[
+                { key: 'mastery', label: '掌握度', icon: Brain },
+                { key: 'correlation', label: '关联度', icon: Activity },
+                { key: 'sequence', label: '学习顺序', icon: TrendingUp },
+                { key: 'bottleneck', label: '瓶颈', icon: AlertCircle },
+                { key: 'evaluation', label: '评估报告', icon: BarChart3 },
+                { key: 'efficiency', label: '效率', icon: Zap },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => handleTabChange(tab.key as typeof activeTab)}
+                  className={`flex items-center space-x-1.5 px-3 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+                    activeTab === tab.key
+                      ? 'bg-blue-600 text-white shadow-lg'
+                      : 'bg-white text-slate-500 border border-slate-200'
+                  }`}
+                >
+                  <tab.icon size={12} />
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Tab Content */}
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+              {analysisLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="animate-spin text-blue-600" size={24} />
+                  <span className="ml-2 text-sm text-slate-500">加载中...</span>
+                </div>
+              ) : (
+                <>
+                  {/* Knowledge Mastery Tab */}
+                  {activeTab === 'mastery' && knowledgeMastery && (
+                    <div>
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="text-sm font-bold text-slate-800">知识点掌握统计</h3>
+                        <span className="text-xs text-slate-500">共 {knowledgeMastery.totalPoints} 个</span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 mb-3">
+                        <div className="text-center p-2 bg-green-50 rounded-xl">
+                          <p className="text-lg font-bold text-green-600">{knowledgeMastery.masteredPoints}</p>
+                          <p className="text-[10px] text-slate-500">已掌握</p>
+                        </div>
+                        <div className="text-center p-2 bg-blue-50 rounded-xl">
+                          <p className="text-lg font-bold text-blue-600">{knowledgeMastery.learningPoints}</p>
+                          <p className="text-[10px] text-slate-500">学习中</p>
+                        </div>
+                        <div className="text-center p-2 bg-red-50 rounded-xl">
+                          <p className="text-lg font-bold text-red-500">{knowledgeMastery.weakPoints}</p>
+                          <p className="text-[10px] text-slate-500">薄弱</p>
+                        </div>
+                        <div className="text-center p-2 bg-slate-50 rounded-xl">
+                          <p className="text-lg font-bold text-slate-600">{knowledgeMastery.averageScore}</p>
+                          <p className="text-[10px] text-slate-500">平均分</p>
+                        </div>
+                      </div>
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {knowledgeMastery.points?.slice(0, 5).map((point) => (
+                          <div key={point.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+                            <span className="text-xs font-medium text-slate-700 truncate flex-1">{point.name}</span>
+                            <span className={`text-[10px] px-2 py-1 rounded-full ${
+                              point.status === 'MASTERED' ? 'bg-green-100 text-green-600' :
+                              point.status === 'WEAK' ? 'bg-red-100 text-red-500' :
+                              'bg-yellow-100 text-yellow-600'
+                            }`}>
+                              {point.masteryScore}分
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Knowledge Correlation Tab */}
+                  {activeTab === 'correlation' && knowledgeCorrelation && (
+                    <div>
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="text-sm font-bold text-slate-800">知识点关联度</h3>
+                        <span className="text-xs text-slate-500">共 {knowledgeCorrelation.totalCorrelations} 条</span>
+                      </div>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {knowledgeCorrelation.correlationMatrix?.slice(0, 5).map((corr, i) => (
+                          <div key={i} className="p-2 bg-slate-50 rounded-lg">
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs font-medium text-slate-700">{corr.sourceName}</span>
+                              <span className="text-[10px] text-slate-400">→</span>
+                              <span className="text-xs font-medium text-slate-700">{corr.targetName}</span>
+                            </div>
+                            <div className="flex justify-between items-center mt-1">
+                              <span className="text-[10px] text-slate-500">{corr.reason}</span>
+                              <span className="text-[10px] font-bold text-blue-600">{corr.correlation}%</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Learning Sequence Tab */}
+                  {activeTab === 'sequence' && learningSequence && (
+                    <div>
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="text-sm font-bold text-slate-800">推荐学习顺序</h3>
+                        <span className="text-xs text-slate-500">约 {learningSequence.totalEstimatedTime} 分钟</span>
+                      </div>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {learningSequence.suggestedSequence?.slice(0, 5).map((item) => (
+                          <div key={item.order} className="flex items-center space-x-2 p-2 bg-slate-50 rounded-lg">
+                            <span className="w-5 h-5 bg-blue-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                              {item.order}
+                            </span>
+                            <span className="text-xs font-medium text-slate-700 flex-1 truncate">{item.name}</span>
+                            <span className="text-[10px] text-slate-400">{item.reason}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bottleneck Tab */}
+                  {activeTab === 'bottleneck' && bottlenecks && (
+                    <div>
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="text-sm font-bold text-slate-800">知识点瓶颈</h3>
+                        <span className="text-xs text-slate-500">共 {bottlenecks.bottleneckCount} 个</span>
+                      </div>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {bottlenecks.bottlenecks?.slice(0, 3).map((b) => (
+                          <div key={b.knowledgePointId} className="p-2 bg-red-50 rounded-lg border border-red-100">
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs font-bold text-slate-700">{b.name}</span>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                                b.difficulty === 'hard' ? 'bg-red-100 text-red-600' :
+                                b.difficulty === 'medium' ? 'bg-orange-100 text-orange-600' :
+                                'bg-green-100 text-green-600'
+                              }`}>
+                                {b.difficulty === 'hard' ? '困难' : b.difficulty === 'medium' ? '中等' : '简单'}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-1">{b.reasons?.[0]}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Evaluation Tab */}
+                  {activeTab === 'evaluation' && evaluation && (
+                    <div>
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="text-sm font-bold text-slate-800">学习评估报告</h3>
+                        <span className="text-lg font-black text-blue-600">{evaluation.grade}</span>
+                      </div>
+                      <div className="text-center mb-3">
+                        <p className="text-3xl font-black text-slate-800">{evaluation.overallScore}</p>
+                        <p className="text-[10px] text-slate-500">综合评分</p>
+                      </div>
+                      <div className="space-y-2 mb-3">
+                        {Object.entries(evaluation.dimensions || {}).map(([key, value]: [string, any]) => (
+                          <div key={key} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+                            <span className="text-xs text-slate-600">
+                              {key === 'studyTime' ? '学习时长' :
+                               key === 'knowledgeMastery' ? '知识点掌握' :
+                               key === 'practice' ? '练习' : '复习'}
+                            </span>
+                            <div className="flex items-center space-x-2">
+                              <span className="text-xs font-bold text-slate-700">{value.score}分</span>
+                              <span className="text-[10px] text-slate-400">({value.rating})</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {evaluation.suggestions && evaluation.suggestions.length > 0 && (
+                        <div className="p-2 bg-blue-50 rounded-lg">
+                          <p className="text-[10px] font-bold text-blue-600 mb-1">建议</p>
+                          <p className="text-[10px] text-slate-600">{evaluation.suggestions[0]}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Efficiency Tab */}
+                  {activeTab === 'efficiency' && efficiency && (
+                    <div>
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="text-sm font-bold text-slate-800">学习效率分析</h3>
+                        <span className="text-lg font-black text-purple-600">{efficiency.efficiencyScore}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mb-3">
+                        <div className="text-center p-2 bg-slate-50 rounded-xl">
+                          <p className="text-lg font-bold text-slate-700">{efficiency.metrics?.retentionRate ? Math.round(efficiency.metrics.retentionRate * 100) : 0}%</p>
+                          <p className="text-[10px] text-slate-500">知识保持率</p>
+                        </div>
+                        <div className="text-center p-2 bg-slate-50 rounded-xl">
+                          <p className="text-lg font-bold text-slate-700">{efficiency.studyPatterns?.preferredTime || '-'}</p>
+                          <p className="text-[10px] text-slate-500">偏好时段</p>
+                        </div>
+                      </div>
+                      {efficiency.recommendations && efficiency.recommendations.length > 0 && (
+                        <div className="p-2 bg-amber-50 rounded-lg border border-amber-100">
+                          <p className="text-[10px] font-bold text-amber-600 mb-1">效率建议</p>
+                          <p className="text-[10px] text-slate-600">{efficiency.recommendations[0]}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Default empty state */}
+                  {!knowledgeMastery && !knowledgeCorrelation && !learningSequence && !bottlenecks && !evaluation && !efficiency && (
+                    <div className="text-center py-8 text-slate-400">
+                      <BarChart3 size={32} className="mx-auto mb-2 opacity-50" />
+                      <p className="text-xs">选择一个分析维度查看数据</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* 
+      {/*
           3. 助学机器人 - 使用 absolute 定位
           改为 absolute 并配合父容器 h-screen，使其在手机模拟器容器内“相对固定”，
           而不会飞到屏幕最右侧（解决 desktop 预览时的位置问题）。

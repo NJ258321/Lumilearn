@@ -2,6 +2,11 @@
 // API 类型定义
 // =====================================================
 
+// Re-export all types from src/types/api
+// Use re-export with 'type' keyword to avoid value conflicts
+export * from './src/types/api'
+export type { User as UserType } from './src/types/api'
+
 // 通用响应类型
 export interface ApiResponse<T = unknown> {
   success: boolean
@@ -174,7 +179,14 @@ export enum AppView {
   COURSE_DETAIL_REVIEW = 'COURSE_DETAIL_REVIEW',
   COURSE_DETAIL_STUDY = 'COURSE_DETAIL_STUDY',
   ANALYSIS = 'ANALYSIS',
-  PRACTICE_LIST = 'PRACTICE_LIST'
+  PRACTICE_LIST = 'PRACTICE_LIST',
+  // P5 - 用户系统
+  AUTH = 'AUTH',
+  SETTINGS = 'SETTINGS',
+  // P6 - 智能组卷与测评
+  EXAM = 'EXAM',
+  EXAM_RESULT = 'EXAM_RESULT',
+  MISTAKES = 'MISTAKES',
 }
 
 export interface Task {

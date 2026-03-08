@@ -14,6 +14,10 @@ import CourseDetailReview from './pages/CourseDetailReview';
 import CourseDetailStudy from './pages/CourseDetailStudy';
 import Analysis from './pages/Analysis';
 import PracticeList from './pages/PracticeList';
+import Auth from './pages/Auth';
+import Settings from './pages/Settings';
+import Exam from './pages/Exam';
+import Mistakes from './pages/Mistakes';
 import { AppView } from './types';
 
 const App: React.FC = () => {
@@ -71,6 +75,14 @@ const App: React.FC = () => {
         return <TimeMachine onBack={() => navigate(AppView.DASHBOARD)} recordId={recordId} />;
       case AppView.RECORDER:
         return <Recorder onBack={() => navigate(AppView.DASHBOARD)} initialCourseName={viewData?.courseName} />;
+      case AppView.AUTH:
+        return <Auth onNavigate={navigate} />;
+      case AppView.SETTINGS:
+        return <Settings onNavigate={navigate} />;
+      case AppView.EXAM:
+        return <Exam onNavigate={navigate} examData={viewData} />;
+      case AppView.MISTAKES:
+        return <Mistakes onNavigate={navigate} />;
       default:
         return <Dashboard onNavigate={navigate} />;
     }

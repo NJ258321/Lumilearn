@@ -1,11 +1,16 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Clock, Play, CheckCircle2, Zap, Flame, X, AlertTriangle, Moon, Loader2, RefreshCw, ChevronRight, Trash2 } from 'lucide-react';
+import { Clock, Play, CheckCircle2, Zap, Flame, X, AlertTriangle, Moon, Loader2, RefreshCw, ChevronRight, Trash2, BookOpen, Target, TrendingUp, Brain, User, Settings, LogOut, Bell } from 'lucide-react';
 import { MOCK_TASK_GROUPS } from '../constants';
 import { AppView, Task, TaskGroup } from '../types';
 import { generateDailyPlan } from '../services/geminiService';
 import { getStudyRecordList, deleteStudyRecord, searchStudyRecords } from '../src/api/studyRecords';
 import { getRecentlyReviewed } from '../src/api/knowledgePoints';
-import type { StudyRecord, KnowledgePoint } from '../types';
+import { getDashboard } from '../src/api/statistics';
+import { getTodayReview } from '../src/api/review';
+import { getDailyRecommendation } from '../src/api/recommendations';
+import { getTodayReminders } from '../src/api/reminders';
+import { getUser, isLoggedIn, clearToken, setUser as setUserInfo } from '../src/api/auth';
+import type { StudyRecord, KnowledgePoint, Dashboard, TodayReview, UserType, DailyRecommendation, TodayRemindersResponse } from '../types';
 
 interface DashboardProps {
   onNavigate: (view: AppView, data?: any) => void;
@@ -27,6 +32,22 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   // Recently Reviewed Knowledge Points State - Task 2.3.3
   const [recentKps, setRecentKps] = useState<KnowledgePoint[]>([]);
   const [recentKpsLoading, setRecentKpsLoading] = useState(false);
+
+  // P4 Dashboard Statistics State
+  const [dashboardData, setDashboardData] = useState<Dashboard | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [todayReview, setTodayReview] = useState<TodayReview | null>(null);
+  const [todayReviewLoading, setTodayReviewLoading] = useState(false);
+
+  // P5 - User Auth State
+  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
+  const [isLogged, setIsLogged] = useState(false);
+
+  // P5 - Recommendations & Reminders State
+  const [dailyRecommendation, setDailyRecommendation] = useState<DailyRecommendation | null>(null);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
+  const [todayReminders, setTodayReminders] = useState<TodayRemindersResponse | null>(null);
+  const [remindersLoading, setRemindersLoading] = useState(false);
 
   // Fetch Study Records
   const fetchStudyRecords = useCallback(async () => {
@@ -65,6 +86,85 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     }
   }, []);
 
+  // Fetch Dashboard Statistics - P4
+  const fetchDashboardStats = useCallback(async () => {
+    setDashboardLoading(true);
+    try {
+      const response = await getDashboard();
+      if (response.success && response.data) {
+        setDashboardData(response.data);
+      }
+    } catch (err) {
+      console.error('获取仪表盘数据失败', err);
+    } finally {
+      setDashboardLoading(false);
+    }
+  }, []);
+
+  // Fetch Today's Review - P4
+  const fetchTodayReview = useCallback(async () => {
+    setTodayReviewLoading(true);
+    try {
+      const response = await getTodayReview();
+      if (response.success && response.data) {
+        setTodayReview(response.data);
+      }
+    } catch (err) {
+      console.error('获取今日复习任务失败', err);
+    } finally {
+      setTodayReviewLoading(false);
+    }
+  }, []);
+
+  // P5 - Initialize user state
+  useEffect(() => {
+    const user = getUser();
+    const loggedIn = isLoggedIn();
+    setCurrentUser(user);
+    setIsLogged(loggedIn);
+  }, []);
+
+  // P5 - Fetch Daily Recommendations
+  const fetchDailyRecommendations = useCallback(async () => {
+    if (!isLogged) return;
+    setRecommendationsLoading(true);
+    try {
+      const response = await getDailyRecommendation();
+      if (response.success && response.data) {
+        setDailyRecommendation(response.data);
+      }
+    } catch (err) {
+      console.error('获取每日推荐失败', err);
+    } finally {
+      setRecommendationsLoading(false);
+    }
+  }, [isLogged]);
+
+  // P5 - Fetch Today's Reminders
+  const fetchTodayReminders = useCallback(async () => {
+    if (!isLogged) return;
+    setRemindersLoading(true);
+    try {
+      const response = await getTodayReminders();
+      if (response.success && response.data) {
+        setTodayReminders(response.data);
+      }
+    } catch (err) {
+      console.error('获取今日提醒失败', err);
+    } finally {
+      setRemindersLoading(false);
+    }
+  }, [isLogged]);
+
+  // Handle logout
+  const handleLogout = () => {
+    clearToken();
+    setCurrentUser(null);
+    setIsLogged(false);
+    setDailyRecommendation(null);
+    setTodayReminders(null);
+  };
+
   // Initial fetch
   useEffect(() => {
     if (showRecords) {
@@ -72,7 +172,16 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     }
     // Fetch recently reviewed knowledge points on mount - Task 2.3.3
     fetchRecentKps();
-  }, [showRecords, fetchStudyRecords, fetchRecentKps]);
+    // Fetch dashboard statistics - P4
+    fetchDashboardStats();
+    // Fetch today's review - P4
+    fetchTodayReview();
+    // Fetch P5 data if logged in
+    if (isLogged) {
+      fetchDailyRecommendations();
+      fetchTodayReminders();
+    }
+  }, [showRecords, fetchStudyRecords, fetchRecentKps, fetchDashboardStats, fetchTodayReview, isLogged, fetchDailyRecommendations, fetchTodayReminders]);
 
   // Delete Record
   const handleDeleteRecord = async (id: string) => {
@@ -97,6 +206,24 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     const m = Math.floor(seconds / 60).toString().padStart(2, '0');
     const s = (seconds % 60).toString().padStart(2, '0');
     return `${m}:${s}`;
+  };
+
+  // Format study time to hours and minutes - P4
+  const formatStudyTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) {
+      return `${hours}小时${minutes}分钟`;
+    }
+    return `${minutes}分钟`;
+  };
+
+  // Get progress percentage
+  const getProgressPercentage = () => {
+    if (!dashboardData?.knowledgePoints) return 0;
+    const { total, mastered } = dashboardData.knowledgePoints;
+    if (total === 0) return 0;
+    return Math.round((mastered / total) * 100);
   };
 
   // Format date
@@ -196,6 +323,80 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           </div>
 
           <div className="flex flex-col space-y-2 items-end pt-1">
+            {/* P4 Statistics Cards */}
+            {!dashboardLoading && dashboardData && (
+              <div className="flex space-x-2">
+                {/* Courses Count */}
+                <div className="bg-white/90 backdrop-blur-md border border-slate-100 rounded-2xl px-3 py-2 shadow-lg flex items-center space-x-1.5">
+                  <BookOpen size={14} className="text-blue-500" />
+                  <span className="text-xs font-bold text-slate-600">{dashboardData.coursesCount}</span>
+                  <span className="text-[10px] text-slate-400">课程</span>
+                </div>
+                {/* Knowledge Points Progress */}
+                <div className="bg-white/90 backdrop-blur-md border border-slate-100 rounded-2xl px-3 py-2 shadow-lg flex items-center space-x-1.5">
+                  <Brain size={14} className="text-purple-500" />
+                  <span className="text-xs font-bold text-slate-600">
+                    {dashboardData.knowledgePoints.mastered}/{dashboardData.knowledgePoints.total}
+                  </span>
+                  <span className="text-[10px] text-slate-400">掌握</span>
+                </div>
+              </div>
+            )}
+
+            {/* Today's Review Count - P4 */}
+            {!todayReviewLoading && todayReview && todayReview.totalItems > 0 && (
+              <div className="bg-white/90 backdrop-blur-md border border-amber-200 rounded-2xl px-3 py-2 shadow-lg flex items-center space-x-1.5">
+                <Target size={14} className="text-amber-500" />
+                <span className="text-xs font-bold text-slate-600">{todayReview.totalItems}</span>
+                <span className="text-[10px] text-slate-400">今日复习</span>
+              </div>
+            )}
+
+            {/* P5 - Today's Reminders - Show when logged in */}
+            {!remindersLoading && todayReminders && todayReminders.reminders && todayReminders.reminders.length > 0 && (
+              <div className="bg-white/90 backdrop-blur-md border border-red-200 rounded-2xl px-3 py-2 shadow-lg flex items-center space-x-1.5">
+                <Bell size={14} className="text-red-500" />
+                <span className="text-xs font-bold text-slate-600">{todayReminders.statistics.total}</span>
+                <span className="text-[10px] text-slate-400">提醒</span>
+              </div>
+            )}
+
+            {/* P5 - User Auth Button */}
+            {isLogged && currentUser ? (
+              <div className="flex items-center space-x-1">
+                {/* Settings Button */}
+                <button
+                  onClick={() => onNavigate(AppView.SETTINGS)}
+                  className="bg-white/90 backdrop-blur-md border border-slate-100 rounded-full p-2 shadow-lg active:scale-95 transition-transform"
+                  title="设置"
+                >
+                  <Settings size={14} className="text-slate-500" />
+                </button>
+                {/* User Avatar */}
+                <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-full w-8 h-8 flex items-center justify-center shadow-lg">
+                  <span className="text-white text-xs font-bold">
+                    {currentUser.displayName?.charAt(0) || currentUser.username?.charAt(0) || 'U'}
+                  </span>
+                </div>
+                {/* Logout Button */}
+                <button
+                  onClick={handleLogout}
+                  className="bg-white/90 backdrop-blur-md border border-slate-100 rounded-full p-2 shadow-lg active:scale-95 transition-transform"
+                  title="退出登录"
+                >
+                  <LogOut size={14} className="text-slate-500" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => onNavigate(AppView.AUTH)}
+                className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl px-4 py-2 shadow-lg flex items-center space-x-1.5 active:scale-95 transition-transform"
+              >
+                <User size={14} className="text-white" />
+                <span className="text-xs font-bold text-white">登录</span>
+              </button>
+            )}
+
             {/* Recent Study Records Button */}
             <button
                 onClick={() => setShowRecords(!showRecords)}
@@ -251,6 +452,56 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         </div>
 
         <div className="relative px-4 min-h-[600px]">
+
+          {/* --- P4 统计概览卡片 --- */}
+          {!dashboardLoading && dashboardData && (
+            <div className="mb-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="bg-blue-100 p-1.5 rounded-lg">
+                    <TrendingUp size={14} className="text-blue-600" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-800">本周学习概览</h3>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {/* Study Time */}
+                <div className="bg-white/80 rounded-xl p-3 border border-blue-100/50 text-center">
+                  <p className="text-lg font-bold text-blue-600">
+                    {formatStudyTime(dashboardData.weeklyStats?.studyTime || 0)}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-1">学习时长</p>
+                </div>
+                {/* Study Days */}
+                <div className="bg-white/80 rounded-xl p-3 border border-blue-100/50 text-center">
+                  <p className="text-lg font-bold text-green-600">
+                    {dashboardData.weeklyStats?.studyDays || 0}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-1">学习天数</p>
+                </div>
+                {/* Mistakes */}
+                <div className="bg-white/80 rounded-xl p-3 border border-blue-100/50 text-center">
+                  <p className="text-lg font-bold text-red-500">
+                    {dashboardData.weeklyStats?.mistakes || 0}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-1">本周错题</p>
+                </div>
+              </div>
+              {/* Progress Bar */}
+              <div className="mt-3">
+                <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                  <span>知识点掌握进度</span>
+                  <span>{getProgressPercentage()}%</span>
+                </div>
+                <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-500"
+                    style={{ width: `${getProgressPercentage()}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* --- 复习建议卡片 - Task 2.3.3 --- */}
           {recentKps.length > 0 && (

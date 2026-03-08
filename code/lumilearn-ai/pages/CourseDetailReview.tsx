@@ -1,8 +1,10 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
-import { ArrowLeft, ChevronRight, Flame, Play, Target, CheckCircle2, Folder, Plus, Minus, Edit3, Trash2, X, Save, HelpCircle, RotateCcw, Loader2, AlertCircle, Clock, FileText, Calendar, Search } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Flame, Play, Target, CheckCircle2, Folder, Plus, Minus, Edit3, Trash2, X, Save, HelpCircle, RotateCcw, Loader2, AlertCircle, Clock, FileText, Calendar, Search, TrendingUp, Brain, Zap } from 'lucide-react';
 import { AppView } from '../types';
 import { getStudyRecordList, updateStudyRecord, deleteStudyRecord } from '../src/api/studyRecords';
-import type { StudyRecord } from '../types';
+import { getTodayReview, getReviewStatistics, getCourseReview, completeReview } from '../src/api/review';
+import { getMilestones } from '../src/api/progress';
+import type { StudyRecord, TodayReview, ReviewStatistics, CourseReview, CourseMilestones, CompleteReviewRequest } from '../types';
 
 interface CourseDetailReviewProps {
   onNavigate: (view: AppView, data?: any) => void;
@@ -135,6 +137,12 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
 
+  // P4 - Review Data State
+  const [todayReview, setTodayReview] = useState<TodayReview | null>(null);
+  const [reviewStats, setReviewStats] = useState<ReviewStatistics | null>(null);
+  const [courseReview, setCourseReview] = useState<CourseReview | null>(null);
+  const [milestones, setMilestones] = useState<CourseMilestones | null>(null);
+
   // --- Fetch Study Records ---
   const fetchStudyRecords = useCallback(async () => {
     if (!courseId) return;
@@ -161,6 +169,64 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
   useEffect(() => {
     fetchStudyRecords();
   }, [fetchStudyRecords]);
+
+  // P4 - Fetch Today's Review
+  const fetchTodayReview = useCallback(async () => {
+    try {
+      const response = await getTodayReview();
+      if (response.success && response.data) {
+        setTodayReview(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch today review:', err);
+    }
+  }, []);
+
+  // P4 - Fetch Review Statistics
+  const fetchReviewStats = useCallback(async () => {
+    try {
+      const response = await getReviewStatistics();
+      if (response.success && response.data) {
+        setReviewStats(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch review stats:', err);
+    }
+  }, []);
+
+  // P4 - Fetch Course Review
+  const fetchCourseReview = useCallback(async () => {
+    if (!courseId) return;
+    try {
+      const response = await getCourseReview(courseId);
+      if (response.success && response.data) {
+        setCourseReview(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch course review:', err);
+    }
+  }, [courseId]);
+
+  // P4 - Fetch Milestones
+  const fetchMilestones = useCallback(async () => {
+    if (!courseId) return;
+    try {
+      const response = await getMilestones(courseId);
+      if (response.success && response.data) {
+        setMilestones(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch milestones:', err);
+    }
+  }, [courseId]);
+
+  // Initial P4 data fetch
+  useEffect(() => {
+    fetchTodayReview();
+    fetchReviewStats();
+    fetchCourseReview();
+    fetchMilestones();
+  }, [fetchTodayReview, fetchReviewStats, fetchCourseReview, fetchMilestones]);
 
   // --- Search by Date Range ---
   const handleSearchByDate = () => {
@@ -609,6 +675,83 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
                 </div>
              </div>
         </div>
+
+        {/* P4 - Review Statistics Card */}
+        {(todayReview || reviewStats || courseReview) && (
+          <div className="absolute top-24 left-0 right-0 z-20 px-6 pointer-events-none">
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-100 rounded-2xl p-4 shadow-lg mx-auto max-w-md pointer-events-auto">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="bg-amber-100 p-1.5 rounded-lg">
+                    <Brain size={14} className="text-amber-600" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-800">复习概览</h3>
+                </div>
+                {todayReview && (
+                  <span className="text-[10px] text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full font-medium">
+                    今日 {todayReview.totalItems} 项
+                  </span>
+                )}
+              </div>
+
+              {/* Stats Grid */}
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                {/* Today's Tasks */}
+                <div className="bg-white/80 rounded-xl p-2 text-center border border-amber-100/50">
+                  <p className="text-lg font-bold text-amber-600">{todayReview?.totalItems || 0}</p>
+                  <p className="text-[10px] text-slate-500">今日任务</p>
+                </div>
+                {/* This Week */}
+                <div className="bg-white/80 rounded-xl p-2 text-center border border-amber-100/50">
+                  <p className="text-lg font-bold text-blue-600">
+                    {reviewStats?.statistics?.totalReviewedThisWeek || 0}
+                  </p>
+                  <p className="text-[10px] text-slate-500">本周复习</p>
+                </div>
+                {/* Weak Points */}
+                <div className="bg-white/80 rounded-xl p-2 text-center border border-amber-100/50">
+                  <p className="text-lg font-bold text-red-500">
+                    {reviewStats?.statistics?.weakPointsRemaining || courseReview?.statusSummary?.weak || 0}
+                  </p>
+                  <p className="text-[10px] text-slate-500">薄弱点</p>
+                </div>
+              </div>
+
+              {/* Course Status Summary */}
+              {courseReview?.statusSummary && (
+                <div className="flex justify-between text-[10px] mb-2">
+                  <span className="text-green-600 flex items-center">
+                    <CheckCircle2 size={10} className="mr-1" />
+                    已掌握 {courseReview.statusSummary.mastered || 0}
+                  </span>
+                  <span className="text-blue-600 flex items-center">
+                    学习中 {courseReview.statusSummary.learning || 0}
+                  </span>
+                  <span className="text-red-500 flex items-center">
+                    薄弱 {courseReview.statusSummary.weak || 0}
+                  </span>
+                </div>
+              )}
+
+              {/* Progress Bar */}
+              {milestones && (
+                <div className="mt-2">
+                  <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                    <span>里程碑进度</span>
+                    <span>{milestones.achievedCount}/{milestones.totalCount}</span>
+                  </div>
+                  <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full"
+                      style={{ width: `${milestones.overallProgress * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* --- LEGEND (Visible on Micro Zoom) --- */}
         {isMicro && (

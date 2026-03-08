@@ -182,5 +182,114 @@ export const API_CONFIG = {
     aiSearchResources: '/api/ai/search-resources',
     audioVad: '/api/audio',  // :id/vad
     audioVadStatus: '/api/audio/vad/status',
+    // P4 - 学习数据统计
+    statistics: {
+      courseOverview: '/api/statistics/course',  // :courseId/overview
+      knowledgePointsMastery: '/api/statistics/knowledge-points',  // :courseId/mastery
+      activities: '/api/statistics/activities',
+      chapterSummary: '/api/statistics/chapter',  // :chapterId/summary
+      dashboard: '/api/statistics/dashboard',
+    },
+    // P4 - 学习进度追踪
+    progress: {
+      course: '/api/progress/course',  // :courseId
+      knowledgePoint: '/api/progress/knowledge-point',  // :id
+      updateStatus: '/api/progress/knowledge-point',  // :id/status
+      recordProgress: '/api/progress/knowledge-point',  // :id/progress
+      milestones: '/api/progress/milestones',  // :courseId
+      overview: '/api/progress/overview',
+    },
+    // P4 - 复习计划
+    review: {
+      generatePlan: '/api/review/generate-plan',
+      today: '/api/review/today',
+      complete: '/api/review',  // :knowledgePointId/complete
+      statistics: '/api/review/statistics',
+      course: '/api/review/course',  // :courseId
+    },
+    // P4 - 数据分析
+    analysis: {
+      knowledgeCorrelation: '/api/analysis/knowledge-points',  // :courseId/correlation
+      learningSequence: '/api/analysis/learning-sequence',  // :courseId
+      bottlenecks: '/api/analysis/bottlenecks',  // :courseId
+      evaluate: '/api/analysis/evaluate',
+      efficiency: '/api/analysis/efficiency',  // :courseId
+      compare: '/api/analysis/compare',  // :courseId
+    },
+    // P5 - 用户认证
+    auth: {
+      register: '/api/auth/register',
+      login: '/api/auth/login',
+      me: '/api/auth/me',
+      profile: '/api/auth/profile',
+      password: '/api/auth/password',
+      users: '/api/auth/users',  // 管理员
+      userRole: '/api/auth/users',  // :id/role
+    },
+    // P5 - 个性化推荐
+    recommendations: {
+      daily: '/api/recommendations/daily',
+      learningPath: '/api/recommendations/learning-path',  // :courseId
+      resources: '/api/recommendations/resources',  // :knowledgePointId
+      feedback: '/api/recommendations/feedback',
+      popular: '/api/recommendations/popular',
+    },
+    // P5 - 学习提醒
+    reminders: {
+      base: '/api/reminders',
+      today: '/api/reminders/today',
+      complete: '/api/reminders',  // :id/complete
+      batchDelete: '/api/reminders/batch-delete',
+    },
+    // P5 - 数据导出
+    export: {
+      data: '/api/export/data',
+      report: '/api/export/report',
+    },
+    // P5 - 数据同步
+    sync: {
+      status: '/api/sync/status',
+      trigger: '/api/sync/trigger',
+    },
+    // P5 - 数据导入
+    import: {
+      data: '/api/import/data',
+    },
+    // P5 - 用户设置
+    settings: {
+      base: '/api/settings',
+      default: '/api/settings/default',
+    },
+    // P5 - 复习计划增强
+    reviewEnhance: {
+      replan: '/api/review/replan',
+      optimize: '/api/review/optimize',
+    },
+    // P6 - 题目管理
+    questions: {
+      list: '/api/questions',
+      detail: (id: string) => `/api/questions/${id}`,
+      create: '/api/questions',
+      update: (id: string) => `/api/questions/${id}`,
+      delete: (id: string) => `/api/questions/${id}`,
+      import: '/api/questions/import',
+      export: '/api/questions/export',
+    },
+    // P6 - 考试与练习
+    exams: {
+      generate: '/api/exams/generate',
+      generateByFilters: '/api/exams/generate-by-filters',
+      random: '/api/exams/random',
+      dailyPractice: '/api/exams/daily-practice',
+      challenge: '/api/exams/challenge',
+      sessions: '/api/exams/sessions',
+      sessionAnswers: (sessionId: string) => `/api/exams/${sessionId}/answers`,
+      sessionSubmit: (sessionId: string) => `/api/exams/${sessionId}/submit`,
+      records: '/api/exams/records',
+      statistics: '/api/exams/statistics',
+      mistakes: '/api/exams/mistakes',
+      mistakesRetry: '/api/exams/mistakes/retry',
+      personalizedPractice: '/api/exams/personalized-practice',
+    },
   },
 } as const

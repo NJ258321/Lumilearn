@@ -1,8 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AppView } from '../types';
-import { ChevronRight, AlertCircle, ChevronDown, Check } from 'lucide-react';
+import { ChevronRight, AlertCircle, ChevronDown, Check, Zap, Target, Trophy, BookOpen, Clock, TrendingUp, Loader2 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { getDailyPractice, getExamStatistics, getMistakes, startChallenge, randomDraw } from '../src/api/exams';
+import type { DailyPracticeResponse, ExamStatisticsResponse, MistakesResponse } from '../src/types/api';
 
 interface PracticeListProps {
   onNavigate: (view: AppView, data?: any) => void;
@@ -11,6 +13,83 @@ interface PracticeListProps {
 const PracticeList: React.FC<PracticeListProps> = ({ onNavigate }) => {
   const [filter, setFilter] = useState<'all' | 'reviewing' | 'studying'>('all');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  // P6 - Practice modes state
+  const [dailyPractice, setDailyPractice] = useState<DailyPracticeResponse | null>(null);
+  const [statistics, setStatistics] = useState<ExamStatisticsResponse | null>(null);
+  const [mistakes, setMistakes] = useState<MistakesResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [startingPractice, setStartingPractice] = useState(false);
+
+  // Fetch P6 data
+  const fetchPracticeData = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Fetch daily practice
+      const dailyRes = await getDailyPractice();
+      if (dailyRes.success && dailyRes.data) {
+        setDailyPractice(dailyRes.data);
+      }
+
+      // Fetch statistics
+      const statsRes = await getExamStatistics();
+      if (statsRes.success && statsRes.data) {
+        setStatistics(statsRes.data);
+      }
+
+      // Fetch mistakes
+      const mistakesRes = await getMistakes();
+      if (mistakesRes.success && mistakesRes.data) {
+        setMistakes(mistakesRes.data);
+      }
+    } catch (err) {
+      console.error('Fetch practice data error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Handle start challenge
+  const handleStartChallenge = async (mode: 'speed' | 'accuracy' | 'endurance') => {
+    setStartingPractice(true);
+    try {
+      const response = await startChallenge({ courseId: 'c1', mode, count: 10 });
+      if (response.success && response.data) {
+        onNavigate(AppView.EXAM, {
+          type: 'challenge',
+          questions: response.data.questions,
+          sessionId: response.data.sessionId,
+          mode: response.data.mode,
+        });
+      }
+    } catch (err) {
+      console.error('Start challenge error:', err);
+    } finally {
+      setStartingPractice(false);
+    }
+  };
+
+  // Handle start random practice
+  const handleStartRandom = async () => {
+    setStartingPractice(true);
+    try {
+      const response = await randomDraw({ courseId: 'c1', count: 10 });
+      if (response.success && response.data) {
+        onNavigate(AppView.EXAM, {
+          type: 'random',
+          questions: response.data.questions,
+        });
+      }
+    } catch (err) {
+      console.error('Start random error:', err);
+    } finally {
+      setStartingPractice(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPracticeData();
+  }, [fetchPracticeData]);
 
   // 定义指定的三个课程及其展示数据
   const displayCourses = [
@@ -124,7 +203,77 @@ const PracticeList: React.FC<PracticeListProps> = ({ onNavigate }) => {
         </div>
       </div>
 
-      <div className="px-5 space-y-3 mt-2">
+      {/* P6 - Practice Modes Section */}
+      <div className="px-5 mt-4">
+        <h2 className="text-sm font-bold text-slate-600 mb-3">练习模式</h2>
+        <div className="grid grid-cols-2 gap-3">
+          {/* Daily Practice */}
+          <div
+            onClick={() => dailyPractice?.question && onNavigate(AppView.EXAM, { type: 'daily', question: dailyPractice.question })}
+            className="bg-gradient-to-br from-amber-50 to-orange-100 rounded-2xl p-4 border border-amber-100 active:scale-98 transition-transform cursor-pointer"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <Zap size={20} className="text-amber-500" />
+              {dailyPractice && (
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-200 px-1.5 py-0.5 rounded-full">
+                  连续{dailyPractice.streak}天
+                </span>
+              )}
+            </div>
+            <h3 className="text-sm font-bold text-slate-800 mb-1">每日一练</h3>
+            <p className="text-[10px] text-slate-500">每天进步一点点</p>
+            {statistics && (
+              <div className="mt-2 flex items-center text-[10px] text-slate-500">
+                <TrendingUp size={10} className="mr-1 text-emerald-500" />
+                正确率 {Math.round(statistics.correctRate * 100)}%
+              </div>
+            )}
+          </div>
+
+          {/* Challenge Mode */}
+          <div
+            onClick={() => handleStartChallenge('speed')}
+            className="bg-gradient-to-br from-purple-50 to-violet-100 rounded-2xl p-4 border border-purple-100 active:scale-98 transition-transform cursor-pointer"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <Trophy size={20} className="text-purple-500" />
+            </div>
+            <h3 className="text-sm font-bold text-slate-800 mb-1">挑战模式</h3>
+            <p className="text-[10px] text-slate-500">速度/准确率/耐力</p>
+          </div>
+
+          {/* Random Practice */}
+          <div
+            onClick={handleStartRandom}
+            className="bg-gradient-to-br from-blue-50 to-cyan-100 rounded-2xl p-4 border border-blue-100 active:scale-98 transition-transform cursor-pointer"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <Target size={20} className="text-blue-500" />
+            </div>
+            <h3 className="text-sm font-bold text-slate-800 mb-1">随机练习</h3>
+            <p className="text-[10px] text-slate-500">随机抽取题目</p>
+          </div>
+
+          {/* Mistakes Review */}
+          <div
+            onClick={() => onNavigate(AppView.MISTAKES)}
+            className="bg-gradient-to-br from-red-50 to-rose-100 rounded-2xl p-4 border border-red-100 active:scale-98 transition-transform cursor-pointer"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <BookOpen size={20} className="text-red-500" />
+              {mistakes && mistakes.statistics.total > 0 && (
+                <span className="text-[10px] font-bold text-red-600 bg-red-200 px-1.5 py-0.5 rounded-full">
+                  {mistakes.statistics.total}题
+                </span>
+              )}
+            </div>
+            <h3 className="text-sm font-bold text-slate-800 mb-1">错题本</h3>
+            <p className="text-[10px] text-slate-500">查漏补缺</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 space-y-3 mt-4">
         {/* 课程列表 */}
         {filteredCourses.length > 0 ? (
           filteredCourses.map((course) => {
