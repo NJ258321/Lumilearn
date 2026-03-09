@@ -11,6 +11,7 @@ import type {
   RelationType
 } from '../types/index.js'
 import prisma from '../lib/prisma.js'
+import { detectWeaknesses, detectGraphGaps, getLearningPath, calculateImportance, analyzeGraphPriority } from '../services/knowledgeGraph.js'
 
 const router = Router()
 
@@ -545,6 +546,160 @@ router.delete('/knowledge-relations', [
     res.status(500).json({
       success: false,
       error: '批量删除知识关系失败'
+    } as ApiResponse<undefined>)
+  }
+})
+
+// ==================== POST /api/knowledge-graph/weakness-analysis - 短板分析（KG-01） ====================
+
+/**
+ * 知识图谱短板分析
+ * 检测前置概念缺失、高频引用低覆盖节点、生成结构性预警
+ */
+router.post('/knowledge-graph/weakness-analysis', [
+  body('courseId').optional().isUUID().withMessage('课程ID必须是有效的UUID'),
+  body('minPriority').optional().isInt({ min: 0, max: 10 }).toInt(),
+  validate
+], async (req: Request, res: Response) => {
+  try {
+    const { courseId, minPriority } = req.body as {
+      courseId?: string
+      minPriority?: number
+    }
+
+    const result = await detectWeaknesses({
+      courseId,
+      minPriority: minPriority || 0
+    })
+
+    res.json({
+      success: true,
+      data: result
+    } as ApiResponse<typeof result>)
+  } catch (error: any) {
+    console.error('Error in weakness analysis:', error)
+    res.status(500).json({
+      success: false,
+      error: '短板分析失败'
+    } as ApiResponse<undefined>)
+  }
+})
+
+// ==================== POST /api/knowledge-graph/detect-gaps - 图谱缺口检测（KG-02） ====================
+
+/**
+ * 知识图谱缺口检测
+ * 检测图谱完整性：孤立节点、前置缺失、循环依赖
+ */
+router.post('/knowledge-graph/detect-gaps', [
+  body('courseId').optional().isUUID().withMessage('课程ID必须是有效的UUID'),
+  validate
+], async (req: Request, res: Response) => {
+  try {
+    const { courseId } = req.body as { courseId?: string }
+
+    const result = await detectGraphGaps(courseId)
+
+    res.json({
+      success: true,
+      data: result
+    } as ApiResponse<typeof result>)
+  } catch (error: any) {
+    console.error('Error in gap detection:', error)
+    res.status(500).json({
+      success: false,
+      error: '缺口检测失败'
+    } as ApiResponse<undefined>)
+  }
+})
+
+// ==================== GET /api/knowledge-graph/learning-path/:id - 学习路径建议（KG-01扩展） ====================
+
+/**
+ * 获取知识点学习路径建议
+ * 基于图结构推荐最优学习顺序
+ */
+router.get('/knowledge-graph/learning-path/:id', [
+  param('id').isUUID().withMessage('知识点ID必须是有效的UUID'),
+  validate
+], async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+
+    const result = await getLearningPath(id)
+
+    res.json({
+      success: true,
+      data: result
+    } as ApiResponse<typeof result>)
+  } catch (error: any) {
+    console.error('Error in learning path:', error)
+    res.status(500).json({
+      success: false,
+      error: error.message || '获取学习路径失败'
+    } as ApiResponse<undefined>)
+  }
+})
+
+// ==================== GET /api/knowledge-graph/importance/:id - 知识点重要性计算（KG-01扩展） ====================
+
+/**
+ * 计算知识点重要性分数
+ * 综合考虑基础重要性、被引用次数、难度
+ */
+router.get('/knowledge-graph/importance/:id', [
+  param('id').isUUID().withMessage('知识点ID必须是有效的UUID'),
+  validate
+], async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+
+    const result = await calculateImportance(id)
+
+    res.json({
+      success: true,
+      data: result
+    } as ApiResponse<typeof result>)
+  } catch (error: any) {
+    console.error('Error in importance calculation:', error)
+    res.status(500).json({
+      success: false,
+      error: error.message || '计算重要性失败'
+    } as ApiResponse<undefined>)
+  }
+})
+
+// ==================== POST /api/knowledge-graph/priority - 图结构优先级分析（KG-03） ====================
+
+/**
+ * 基于图结构的优先级分析
+ * 使用 PageRank 风格的影响力传播算法，综合多维度计算优先级
+ */
+router.post('/knowledge-graph/priority', [
+  body('courseId').optional().isUUID().withMessage('课程ID必须是有效的UUID'),
+  body('threshold').optional().isInt({ min: 0, max: 100 }).toInt(),
+  validate
+], async (req: Request, res: Response) => {
+  try {
+    const { courseId, threshold } = req.body as {
+      courseId?: string
+      threshold?: number
+    }
+
+    const result = await analyzeGraphPriority({
+      courseId,
+      threshold
+    })
+
+    res.json({
+      success: true,
+      data: result
+    } as ApiResponse<typeof result>)
+  } catch (error: any) {
+    console.error('Error in graph priority analysis:', error)
+    res.status(500).json({
+      success: false,
+      error: '图结构优先级分析失败'
     } as ApiResponse<undefined>)
   }
 })

@@ -4,6 +4,7 @@ import { validate } from '../middleware/validator.js'
 import type { ApiResponse } from '../types/index.js'
 import prisma from '../lib/prisma.js'
 import { getUserIdFromRequest } from './auth.js'
+import { optimizeReviewPlan, getEfficiencyAnalysis } from '../services/planning.js'
 
 const router = Router()
 
@@ -1119,6 +1120,93 @@ router.post('/review/optimize', [
       success: false,
       error: '多学科统筹优化失败',
       code: 'OPTIMIZE_FAILED'
+    } as ApiResponse<undefined>)
+  }
+})
+
+// ==================== POST /api/review/smart-optimize - 智能复习计划优化 (PLAN-01) ====================
+
+/**
+ * 智能复习计划优化
+ * 基于强化学习算法的个性化复习路径规划
+ */
+router.post('/review/smart-optimize', [
+  body('courseId').optional().isUUID().withMessage('课程ID必须是有效的UUID'),
+  body('dailyStudyHours').optional().isFloat({ min: 0.5, max: 8 }).withMessage('每日学习时长必须是0.5-8的小时数'),
+  body('constraints').optional().isObject(),
+  validate
+], async (req: Request, res: Response) => {
+  try {
+    const userId = getUserIdFromRequest(req)
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: '未登录',
+        code: 'NOT_AUTHENTICATED'
+      } as ApiResponse<undefined>)
+    }
+
+    const { courseId, dailyStudyHours = 3, constraints } = req.body as {
+      courseId?: string
+      dailyStudyHours?: number
+      constraints?: Record<string, any>
+    }
+
+    const result = await optimizeReviewPlan(userId, {
+      courseId,
+      dailyStudyHours,
+      constraints
+    })
+
+    res.json({
+      success: true,
+      data: result
+    } as ApiResponse<typeof result>)
+  } catch (error: any) {
+    console.error('Error in smart optimization:', error)
+    res.status(500).json({
+      success: false,
+      error: '智能复习计划优化失败',
+      code: 'SMART_OPTIMIZE_FAILED'
+    } as ApiResponse<undefined>)
+  }
+})
+
+// ==================== GET /api/review/efficiency - 学习效率分析 ====================
+
+/**
+ * 获取学习效率分析
+ */
+router.get('/review/efficiency', [
+  param('courseId').optional().isUUID().withMessage('课程ID必须是有效的UUID'),
+  validate
+], async (req: Request, res: Response) => {
+  try {
+    const userId = getUserIdFromRequest(req)
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: '未登录',
+        code: 'NOT_AUTHENTICATED'
+      } as ApiResponse<undefined>)
+    }
+
+    const courseId = req.query.courseId as string | undefined
+
+    const result = await getEfficiencyAnalysis(userId, courseId)
+
+    res.json({
+      success: true,
+      data: result
+    } as ApiResponse<typeof result>)
+  } catch (error: any) {
+    console.error('Error in efficiency analysis:', error)
+    res.status(500).json({
+      success: false,
+      error: '获取学习效率分析失败',
+      code: 'EFFICIENCY_ANALYSIS_FAILED'
     } as ApiResponse<undefined>)
   }
 })

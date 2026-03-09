@@ -69,6 +69,9 @@ model KnowledgePoint {
   // P6 题库系统
   questions Question[]
 
+  // P4.3 复习计划关系
+  reviewPlans ReviewPlan[]
+
   // 知识图谱关系
   outgoingRelations KnowledgeRelation[] @relation("KnowledgeRelationSource")
   incomingRelations KnowledgeRelation[] @relation("KnowledgeRelationTarget")
@@ -256,7 +259,8 @@ model ReviewPlan {
   notes            String?
   createdAt        DateTime  @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  knowledgePoint  KnowledgePoint  @relation(fields: [knowledgePointId], references: [id], onDelete: Cascade)
 
   @@unique([userId, knowledgePointId, reviewDate])
   @@index([userId, reviewDate])

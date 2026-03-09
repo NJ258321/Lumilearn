@@ -6,6 +6,11 @@ import path from 'path'
 // Load environment variables
 dotenv.config()
 
+// Import error handlers
+import { notFoundHandler, errorHandler, setupUncaughtExceptionHandler, asyncHandler } from './errors/errorHandler.js'
+import { AppError, ValidationError, NotFoundError, DatabaseError, AuthError } from './errors/AppError.js'
+import { ErrorCode } from './types/errors.js'
+
 // Import services
 import { initReminderService, stopReminderService } from './services/reminder.js'
 
@@ -32,6 +37,8 @@ import exportRoutes from './routes/export.js'
 import settingsRoutes from './routes/settings.js'
 import questionRoutes from './routes/questions.js'
 import examRoutes from './routes/exams.js'
+import handwritingRoutes from './routes/handwriting.js'
+import planningRoutes from './routes/planning.js'
 
 // Initialize Express app
 const app = express()
@@ -93,25 +100,19 @@ app.use('/api', reminderRoutes)
 app.use('/api', exportRoutes)
 app.use('/api', settingsRoutes)
 app.use('/api', questionRoutes)
+app.use('/api', handwritingRoutes)
+app.use('/api', planningRoutes)
 
 // ==================== Error Handlers ====================
 
-// 404 handler
-app.use((_req: Request, res: Response) => {
-  res.status(404).json({
-    success: false,
-    error: 'Route not found'
-  })
-})
+// 404 handler - 使用新的错误处理中间件
+app.use(notFoundHandler)
 
-// Global error handler
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('Error:', err)
-  res.status(500).json({
-    success: false,
-    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
-  })
-})
+// Global error handler - 使用新的错误处理中间件
+app.use(errorHandler)
+
+// Setup uncaught exception handlers
+setupUncaughtExceptionHandler()
 
 // ==================== Start Server ====================
 
