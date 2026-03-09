@@ -1,19 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm start:*)",
-      "Bash(npm run:*)",
-      "Bash(curl:*)",
-      "Bash(npx tsc:*)",
+      "Bash(npm:*)",
       "Bash(npx prisma:*)",
+      "Bash(cd:*)",
+      "Bash(curl:*)",
       "Bash(powershell:*)",
-      "Bash(node:*)",
-      "Bash(cp:*)",
-      "Bash(ffmpeg:*)",
-      "Bash(sqlite3:*)",
-      "Bash(pkill:*)",
-      "Bash(__NEW_LINE_8d319c65c158dcea__ echo:*)",
-      "Bash(npm install:*)"
+      "Bash(cmd.exe:*)",
+      "WebFetch(domain:localhost)",
+      "Bash(git:*)",
+      "Bash(cmd:*)",
+      "Bash(npx tsc:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(netstat:*)"
     ]
   }
 }

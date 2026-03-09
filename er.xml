@@ -1,0 +1,63 @@
+<mxfile host="Electron" modified="2026-01-25T13:00:00.000Z" agent="ChatGPT" version="21.6.8">
+  <diagram id="ER_Strict" name="ER-Strict">
+    <mxGraphModel dx="1800" dy="900" grid="1" gridSize="10">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- User -->
+        <mxCell id="User" value="User" style="swimlane;rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="240" height="150" as="geometry"/>
+        </mxCell>
+
+        <!-- BehaviorLog -->
+        <mxCell id="Log" value="BehaviorLog" style="swimlane;rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="260" width="240" height="150" as="geometry"/>
+        </mxCell>
+
+        <!-- Assessment -->
+        <mxCell id="Assessment" value="Assessment" style="swimlane;rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="360" y="260" width="260" height="170" as="geometry"/>
+        </mxCell>
+
+        <!-- Question -->
+        <mxCell id="Question" value="Question" style="swimlane;rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="700" y="260" width="260" height="150" as="geometry"/>
+        </mxCell>
+
+        <!-- Course -->
+        <mxCell id="Course" value="Course" style="swimlane;rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="700" y="60" width="260" height="130" as="geometry"/>
+        </mxCell>
+
+        <!-- KnowledgeNode -->
+        <mxCell id="Node" value="KnowledgeNode" style="swimlane;rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="60" width="260" height="160" as="geometry"/>
+        </mxCell>
+
+        <!-- KnowledgeEdge -->
+        <mxCell id="Edge" value="KnowledgeEdge" style="swimlane;rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="260" width="260" height="140" as="geometry"/>
+        </mxCell>
+
+        <!-- Media -->
+        <mxCell id="Media" value="Media" style="swimlane;rounded=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="360" y="460" width="300" height="150" as="geometry"/>
+        </mxCell>
+
+        <!-- Relations -->
+        <mxCell value="1:N" style="edgeStyle=orthogonalEdgeStyle;startArrow=ERone;endArrow=ERmany;" edge="1" parent="1" source="User" target="Log"/>
+        <mxCell value="1:N" style="edgeStyle=orthogonalEdgeStyle;startArrow=ERone;endArrow=ERmany;" edge="1" parent="1" source="User" target="Assessment"/>
+        <mxCell value="1:N" style="edgeStyle=orthogonalEdgeStyle;startArrow=ERone;endArrow=ERmany;" edge="1" parent="1" source="Question" target="Assessment"/>
+
+        <mxCell value="1:N" style="edgeStyle=orthogonalEdgeStyle;startArrow=ERone;endArrow=ERmany;" edge="1" parent="1" source="Course" target="Node"/>
+
+        <mxCell value="1:N(Start)" style="edgeStyle=orthogonalEdgeStyle;startArrow=ERone;endArrow=ERmany;" edge="1" parent="1" source="Node" target="Edge"/>
+        <mxCell value="1:N(End)" style="edgeStyle=orthogonalEdgeStyle;startArrow=ERone;endArrow=ERmany;" edge="1" parent="1" source="Node" target="Edge"/>
+
+        <mxCell value="1:N" style="edgeStyle=orthogonalEdgeStyle;dashed=1;startArrow=ERone;endArrow=ERmany;" edge="1" parent="1" source="User" target="Media"/>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

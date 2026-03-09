@@ -1,10 +1,8 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
-import { ArrowLeft, ChevronRight, Flame, Play, Target, CheckCircle2, Folder, Plus, Minus, Edit3, Trash2, X, Save, HelpCircle, RotateCcw, Loader2, AlertCircle, Clock, FileText, Calendar, Search, TrendingUp, Brain, Zap } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Flame, Play, Target, CheckCircle2, Folder, Plus, Minus, Edit3, Trash2, X, Save, HelpCircle, RotateCcw, Loader2, AlertCircle, Clock, FileText } from 'lucide-react';
 import { AppView } from '../types';
 import { getStudyRecordList, updateStudyRecord, deleteStudyRecord } from '../src/api/studyRecords';
-import { getTodayReview, getReviewStatistics, getCourseReview, completeReview } from '../src/api/review';
-import { getMilestones } from '../src/api/progress';
-import type { StudyRecord, TodayReview, ReviewStatistics, CourseReview, CourseMilestones, CompleteReviewRequest } from '../types';
+import type { StudyRecord } from '../types';
 
 interface CourseDetailReviewProps {
   onNavigate: (view: AppView, data?: any) => void;
@@ -134,14 +132,6 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
   const [editingRecord, setEditingRecord] = useState<StudyRecord | null>(null);
   const [notesContent, setNotesContent] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
-
-  // P4 - Review Data State
-  const [todayReview, setTodayReview] = useState<TodayReview | null>(null);
-  const [reviewStats, setReviewStats] = useState<ReviewStatistics | null>(null);
-  const [courseReview, setCourseReview] = useState<CourseReview | null>(null);
-  const [milestones, setMilestones] = useState<CourseMilestones | null>(null);
 
   // --- Fetch Study Records ---
   const fetchStudyRecords = useCallback(async () => {
@@ -149,10 +139,7 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
     setLoading(true);
     setError(null);
     try {
-      const params: any = { courseId };
-      if (startDate) params.startDate = startDate;
-      if (endDate) params.endDate = endDate;
-      const response = await getStudyRecordList(params);
+      const response = await getStudyRecordList({ courseId }); // 后端不支持pageSize参数
       if (response.success && response.data) {
         setStudyRecords(response.data || []);
       } else {
@@ -163,81 +150,12 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
     } finally {
       setLoading(false);
     }
-  }, [courseId, startDate, endDate]);
+  }, [courseId]);
 
   // Initial fetch
   useEffect(() => {
     fetchStudyRecords();
   }, [fetchStudyRecords]);
-
-  // P4 - Fetch Today's Review
-  const fetchTodayReview = useCallback(async () => {
-    try {
-      const response = await getTodayReview();
-      if (response.success && response.data) {
-        setTodayReview(response.data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch today review:', err);
-    }
-  }, []);
-
-  // P4 - Fetch Review Statistics
-  const fetchReviewStats = useCallback(async () => {
-    try {
-      const response = await getReviewStatistics();
-      if (response.success && response.data) {
-        setReviewStats(response.data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch review stats:', err);
-    }
-  }, []);
-
-  // P4 - Fetch Course Review
-  const fetchCourseReview = useCallback(async () => {
-    if (!courseId) return;
-    try {
-      const response = await getCourseReview(courseId);
-      if (response.success && response.data) {
-        setCourseReview(response.data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch course review:', err);
-    }
-  }, [courseId]);
-
-  // P4 - Fetch Milestones
-  const fetchMilestones = useCallback(async () => {
-    if (!courseId) return;
-    try {
-      const response = await getMilestones(courseId);
-      if (response.success && response.data) {
-        setMilestones(response.data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch milestones:', err);
-    }
-  }, [courseId]);
-
-  // Initial P4 data fetch
-  useEffect(() => {
-    fetchTodayReview();
-    fetchReviewStats();
-    fetchCourseReview();
-    fetchMilestones();
-  }, [fetchTodayReview, fetchReviewStats, fetchCourseReview, fetchMilestones]);
-
-  // --- Search by Date Range ---
-  const handleSearchByDate = () => {
-    fetchStudyRecords();
-  };
-
-  // --- Clear Date Filter ---
-  const clearDateFilter = () => {
-    setStartDate('');
-    setEndDate('');
-  };
 
   // --- Update Notes ---
   const handleUpdateNotes = async () => {
@@ -676,83 +594,6 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
              </div>
         </div>
 
-        {/* P4 - Review Statistics Card */}
-        {(todayReview || reviewStats || courseReview) && (
-          <div className="absolute top-24 left-0 right-0 z-20 px-6 pointer-events-none">
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-100 rounded-2xl p-4 shadow-lg mx-auto max-w-md pointer-events-auto">
-              {/* Header */}
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="bg-amber-100 p-1.5 rounded-lg">
-                    <Brain size={14} className="text-amber-600" />
-                  </div>
-                  <h3 className="text-sm font-bold text-slate-800">复习概览</h3>
-                </div>
-                {todayReview && (
-                  <span className="text-[10px] text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full font-medium">
-                    今日 {todayReview.totalItems} 项
-                  </span>
-                )}
-              </div>
-
-              {/* Stats Grid */}
-              <div className="grid grid-cols-3 gap-2 mb-3">
-                {/* Today's Tasks */}
-                <div className="bg-white/80 rounded-xl p-2 text-center border border-amber-100/50">
-                  <p className="text-lg font-bold text-amber-600">{todayReview?.totalItems || 0}</p>
-                  <p className="text-[10px] text-slate-500">今日任务</p>
-                </div>
-                {/* This Week */}
-                <div className="bg-white/80 rounded-xl p-2 text-center border border-amber-100/50">
-                  <p className="text-lg font-bold text-blue-600">
-                    {reviewStats?.statistics?.totalReviewedThisWeek || 0}
-                  </p>
-                  <p className="text-[10px] text-slate-500">本周复习</p>
-                </div>
-                {/* Weak Points */}
-                <div className="bg-white/80 rounded-xl p-2 text-center border border-amber-100/50">
-                  <p className="text-lg font-bold text-red-500">
-                    {reviewStats?.statistics?.weakPointsRemaining || courseReview?.statusSummary?.weak || 0}
-                  </p>
-                  <p className="text-[10px] text-slate-500">薄弱点</p>
-                </div>
-              </div>
-
-              {/* Course Status Summary */}
-              {courseReview?.statusSummary && (
-                <div className="flex justify-between text-[10px] mb-2">
-                  <span className="text-green-600 flex items-center">
-                    <CheckCircle2 size={10} className="mr-1" />
-                    已掌握 {courseReview.statusSummary.mastered || 0}
-                  </span>
-                  <span className="text-blue-600 flex items-center">
-                    学习中 {courseReview.statusSummary.learning || 0}
-                  </span>
-                  <span className="text-red-500 flex items-center">
-                    薄弱 {courseReview.statusSummary.weak || 0}
-                  </span>
-                </div>
-              )}
-
-              {/* Progress Bar */}
-              {milestones && (
-                <div className="mt-2">
-                  <div className="flex justify-between text-[10px] text-slate-500 mb-1">
-                    <span>里程碑进度</span>
-                    <span>{milestones.achievedCount}/{milestones.totalCount}</span>
-                  </div>
-                  <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full"
-                      style={{ width: `${milestones.overallProgress * 100}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* --- LEGEND (Visible on Micro Zoom) --- */}
         {isMicro && (
             <div className="absolute top-28 right-4 bg-white/90 backdrop-blur-md border border-slate-100 p-3 rounded-2xl shadow-sm z-30 flex flex-col space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
@@ -956,8 +797,7 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
 
                 <div className="flex-1 overflow-y-auto px-6 pb-6 mt-2">
                     <div className="space-y-4">
-                        {studyRecords[0] && (
-                        <div className="flex items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 active:bg-blue-50 active:border-blue-100 transition-colors cursor-pointer" onClick={() => onNavigate(AppView.TIME_MACHINE, studyRecords[0].id)}>
+                        <div className="flex items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 active:bg-blue-50 active:border-blue-100 transition-colors cursor-pointer" onClick={() => onNavigate(AppView.TIME_MACHINE)}>
                             <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 mr-4">
                                 <Target size={20} />
                             </div>
@@ -969,7 +809,6 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
                                 <Play size={14} className="text-slate-400 ml-0.5" fill="currentColor"/>
                             </div>
                         </div>
-                        )}
 
                         <div className="flex items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
                             <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 mr-4">
@@ -981,48 +820,9 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
                             </div>
                         </div>
 
-                        {/* --- DATE RANGE SEARCH --- */}
+                        {/* --- STUDY RECORDS SECTION --- */}
                         <div className="pt-4 border-t border-slate-100">
-                            <div className="flex items-center justify-between mb-3">
-                                <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider">学习记录</h5>
-                                {(startDate || endDate) && (
-                                    <button
-                                        onClick={clearDateFilter}
-                                        className="text-[10px] text-blue-500 hover:text-blue-700"
-                                    >
-                                        清除筛选
-                                    </button>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-2 mb-3">
-                                <div className="flex-1 flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5">
-                                    <Calendar size={12} className="text-slate-400" />
-                                    <input
-                                        type="date"
-                                        value={startDate}
-                                        onChange={(e) => setStartDate(e.target.value)}
-                                        className="text-[10px] text-slate-600 w-full outline-none"
-                                        placeholder="开始日期"
-                                    />
-                                </div>
-                                <span className="text-slate-400 text-xs">-</span>
-                                <div className="flex-1 flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5">
-                                    <Calendar size={12} className="text-slate-400" />
-                                    <input
-                                        type="date"
-                                        value={endDate}
-                                        onChange={(e) => setEndDate(e.target.value)}
-                                        className="text-[10px] text-slate-600 w-full outline-none"
-                                        placeholder="结束日期"
-                                    />
-                                </div>
-                                <button
-                                    onClick={handleSearchByDate}
-                                    className="p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-                                >
-                                    <Search size={14} />
-                                </button>
-                            </div>
+                             <h5 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">学习记录</h5>
                              {studyRecords.length === 0 ? (
                                  <div className="text-center py-4 text-slate-400">
                                      <Clock size={20} className="mx-auto mb-2 opacity-50" />
@@ -1066,7 +866,7 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
                                                  <p className="text-[10px] text-slate-500 mt-2 line-clamp-2">{record.notes}</p>
                                              )}
                                              <button
-                                                 onClick={() => onNavigate(AppView.TIME_MACHINE, record.id)}
+                                                 onClick={() => onNavigate(AppView.TIME_MACHINE)}
                                                  className="mt-2 w-full py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-bold hover:bg-blue-100 flex items-center justify-center"
                                              >
                                                  <Play size={10} className="mr-1" />
