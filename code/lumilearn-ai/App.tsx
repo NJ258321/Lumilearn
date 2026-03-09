@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import Layout from './components/Layout';
 import BottomNav from './components/BottomNav';
+import ErrorBoundary from './src/components/ErrorBoundary';
 import Dashboard from './pages/Dashboard';
 import Courses from './pages/Courses';
 import ChapterManager from './pages/ChapterManager';
@@ -18,6 +19,7 @@ import Auth from './pages/Auth';
 import Settings from './pages/Settings';
 import Exam from './pages/Exam';
 import Mistakes from './pages/Mistakes';
+import ExamCalendar from './pages/ExamCalendar';
 import { AppView } from './types';
 
 const App: React.FC = () => {
@@ -83,6 +85,8 @@ const App: React.FC = () => {
         return <Exam onNavigate={navigate} examData={viewData} />;
       case AppView.MISTAKES:
         return <Mistakes onNavigate={navigate} />;
+      case AppView.EXAM_CALENDAR:
+        return <ExamCalendar onBack={() => navigate(AppView.DASHBOARD)} courseId={viewData?.courseId} />;
       default:
         return <Dashboard onNavigate={navigate} />;
     }
@@ -96,10 +100,12 @@ const App: React.FC = () => {
   ].includes(currentView);
 
   return (
-    <Layout>
-      {renderView()}
-      {showNav && <BottomNav currentView={currentView} onNavigate={navigate} />}
-    </Layout>
+    <ErrorBoundary>
+      <Layout>
+        {renderView()}
+        {showNav && <BottomNav currentView={currentView} onNavigate={navigate} />}
+      </Layout>
+    </ErrorBoundary>
   );
 };
 

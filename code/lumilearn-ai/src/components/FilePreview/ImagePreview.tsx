@@ -143,6 +143,40 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({
     }
   }
 
+  // 双指触摸缩放
+  const [initialPinchDistance, setInitialPinchDistance] = useState<number | null>(null)
+  const [initialScale, setInitialScale] = useState(1)
+
+  const getPinchDistance = (touches: React.TouchList) => {
+    if (touches.length < 2) return 0
+    const dx = touches[0].clientX - touches[1].clientX
+    const dy = touches[0].clientY - touches[1].clientY
+    return Math.sqrt(dx * dx + dy * dy)
+  }
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      e.preventDefault()
+      const distance = getPinchDistance(e.touches)
+      setInitialPinchDistance(distance)
+      setInitialScale(scale)
+    }
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && initialPinchDistance !== null) {
+      e.preventDefault()
+      const distance = getPinchDistance(e.touches)
+      const scaleFactor = distance / initialPinchDistance
+      const newScale = Math.max(0.5, Math.min(4, initialScale * scaleFactor))
+      setScale(newScale)
+    }
+  }
+
+  const handleTouchEnd = () => {
+    setInitialPinchDistance(null)
+  }
+
   // 下载图片
   const handleDownload = async () => {
     try {
@@ -248,9 +282,12 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({
       {/* 图片容器 */}
       <div
         ref={containerRef}
-        className="max-w-[90vw] max-h-[80vh] overflow-hidden cursor-grab active:cursor-grabbing"
+        className="max-w-[90vw] max-h-[80vh] overflow-hidden cursor-grab active:cursor-grabbing touch-none"
         onMouseDown={handleMouseDown}
         onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         {!imageLoaded && !imageError && (
           <div className="flex items-center justify-center">

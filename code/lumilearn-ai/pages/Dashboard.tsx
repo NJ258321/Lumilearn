@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Clock, Play, CheckCircle2, Zap, Flame, X, AlertTriangle, Moon, Loader2, RefreshCw, ChevronRight, Trash2, BookOpen, Target, TrendingUp, Brain, User, Settings, LogOut, Bell } from 'lucide-react';
+import { Clock, Play, CheckCircle2, Zap, Flame, X, AlertTriangle, Moon, Loader2, RefreshCw, ChevronRight, Trash2, BookOpen, Target, TrendingUp, Brain, User, Settings, LogOut, Bell, Calendar, Plus, Video } from 'lucide-react';
 import { MOCK_TASK_GROUPS } from '../constants';
 import { AppView, Task, TaskGroup } from '../types';
 import { generateDailyPlan } from '../services/geminiService';
@@ -10,6 +10,7 @@ import { getTodayReview } from '../src/api/review';
 import { getDailyRecommendation } from '../src/api/recommendations';
 import { getTodayReminders } from '../src/api/reminders';
 import { getUser, isLoggedIn, clearToken, setUser as setUserInfo } from '../src/api/auth';
+import { clearAuthCache, onNetworkStatusChange } from '../src/utils/storage';
 import type { StudyRecord, KnowledgePoint, Dashboard, TodayReview, UserType, DailyRecommendation, TodayRemindersResponse } from '../types';
 
 interface DashboardProps {
@@ -156,14 +157,29 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     }
   }, [isLogged]);
 
-  // Handle logout
+  // Handle logout - 增强清除缓存
   const handleLogout = () => {
     clearToken();
+    clearAuthCache(); // 清除所有认证相关缓存
     setCurrentUser(null);
     setIsLogged(false);
     setDailyRecommendation(null);
     setTodayReminders(null);
+    // 刷新页面确保状态完全重置
+    window.location.reload();
   };
+
+  // 网络状态监听
+  useEffect(() => {
+    const cleanup = onNetworkStatusChange((online) => {
+      if (!online) {
+        console.warn('[Network] Connection lost')
+      } else {
+        console.log('[Network] Connection restored')
+      }
+    })
+    return cleanup
+  }, [])
 
   // Initial fetch
   useEffect(() => {
@@ -323,6 +339,16 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           </div>
 
           <div className="flex flex-col space-y-2 items-end pt-1">
+            {/* 备考日历入口 - FE-09 */}
+            <button
+              onClick={() => onNavigate(AppView.EXAM_CALENDAR)}
+              className="bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl px-4 py-2 shadow-lg flex items-center space-x-2 active:scale-95 transition-transform"
+              title="备考日历"
+            >
+              <Calendar size={14} className="text-white" />
+              <span className="text-xs font-bold text-white">备考日历</span>
+            </button>
+
             {/* P4 Statistics Cards */}
             {!dashboardLoading && dashboardData && (
               <div className="flex space-x-2">
@@ -719,9 +745,27 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                         </div>
                     ) : studyRecords.length === 0 ? (
                         <div className="text-center py-8 text-slate-400">
-                            <Clock size={32} className="mx-auto mb-2 opacity-50" />
-                            <p className="text-sm">暂无学习记录</p>
-                            <p className="text-xs mt-1">开始录制你的第一节课吧</p>
+                            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                <Clock size={28} className="opacity-50" />
+                            </div>
+                            <p className="text-sm font-medium text-slate-600 mb-1">还没有学习记录</p>
+                            <p className="text-xs text-slate-400 mb-4">开始录制你的第一节课吧</p>
+                            <div className="flex flex-col gap-2 items-center">
+                                <button
+                                    onClick={() => onNavigate(AppView.RECORDER)}
+                                    className="flex items-center space-x-2 px-5 py-2.5 bg-blue-500 text-white rounded-xl font-medium text-sm hover:bg-blue-600 active:scale-95 transition-all"
+                                >
+                                    <Video size={16} />
+                                    <span>开始采集</span>
+                                </button>
+                                <button
+                                    onClick={() => onNavigate(AppView.COURSES)}
+                                    className="flex items-center space-x-1 text-blue-500 text-sm hover:text-blue-600"
+                                >
+                                    <span>或添加课程</span>
+                                    <ChevronRight size={14} />
+                                </button>
+                            </div>
                         </div>
                     ) : (
                         studyRecords.map((record) => (

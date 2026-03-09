@@ -29,6 +29,11 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1.0);
+  const [isRateChanging, setIsRateChanging] = useState(false);
+
+  // PPT 触摸滑动状态
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchDeltaX, setTouchDeltaX] = useState(0);
 
   // 学习记录详情状态
   const [studyRecord, setStudyRecord] = useState<StudyRecord | null>(null);
@@ -66,6 +71,46 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
   const activeSlideIndex = PPT_SLIDES.reduce((acc, slide, idx) => {
     return currentTime >= slide.timeStart ? idx : acc;
   }, 0);
+
+  // 手动切换 PPT
+  const goToPrevSlide = () => {
+    if (activeSlideIndex > 0) {
+      handleSeekTo(PPT_SLIDES[activeSlideIndex - 1].timeStart)
+    }
+  }
+
+  const goToNextSlide = () => {
+    if (activeSlideIndex < PPT_SLIDES.length - 1) {
+      handleSeekTo(PPT_SLIDES[activeSlideIndex + 1].timeStart)
+    }
+  }
+
+  // 触摸滑动处理
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStartX(e.touches[0].clientX)
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartX === null) return
+    const deltaX = e.touches[0].clientX - touchStartX
+    setTouchDeltaX(deltaX)
+  }
+
+  const handleTouchEnd = () => {
+    if (touchStartX === null) return
+    const threshold = 50 // 滑动阈值
+
+    if (touchDeltaX > threshold) {
+      // 向右滑，上一页
+      goToPrevSlide()
+    } else if (touchDeltaX < -threshold) {
+      // 向左滑，下一页
+      goToNextSlide()
+    }
+
+    setTouchStartX(null)
+    setTouchDeltaX(0)
+  }
 
   // 获取学习记录详情
   const fetchStudyRecord = useCallback(async () => {
@@ -200,12 +245,60 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
     };
   }, []);
 
-  // 播放速率变化时更新音频
+  // 播放速率变化时更新音频（带平滑过渡）
   useEffect(() => {
     if (audioRef.current) {
-      audioRef.current.playbackRate = playbackRate;
+      // 使用平滑过渡改变播放速率
+      const currentRate = audioRef.current.playbackRate;
+      const steps = 10;
+      const stepTime = 50;
+      const stepValue = (playbackRate - currentRate) / steps;
+      let currentStep = 0;
+
+      const animateRate = () => {
+        if (currentStep < steps) {
+          audioRef.current!.playbackRate = currentRate + stepValue * currentStep;
+          currentStep++;
+          setTimeout(animateRate, stepTime);
+        } else {
+          audioRef.current!.playbackRate = playbackRate;
+          setIsRateChanging(false);
+        }
+      };
+
+      setIsRateChanging(true);
+      animateRate();
     }
   }, [playbackRate]);
+
+  // 播放/暂停时音频音量平滑过渡
+  useEffect(() => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        // 淡入
+        audioRef.current.volume = 0;
+        audioRef.current.play();
+        const fadeIn = () => {
+          if (audioRef.current && audioRef.current.volume < 1) {
+            audioRef.current.volume = Math.min(1, audioRef.current.volume + 0.1);
+            setTimeout(fadeIn, 50);
+          }
+        };
+        fadeIn();
+      } else {
+        // 淡出
+        const fadeOut = () => {
+          if (audioRef.current && audioRef.current.volume > 0) {
+            audioRef.current.volume = Math.max(0, audioRef.current.volume - 0.1);
+            setTimeout(fadeOut, 50);
+          } else if (audioRef.current) {
+            audioRef.current.pause();
+          }
+        };
+        fadeOut();
+      }
+    }
+  }, [isPlaying]);
 
   // 模拟计时器（当没有音频时使用）
   useEffect(() => {
@@ -320,11 +413,16 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
               </div>
             )}
 
-            <div className="flex-1 w-full bg-[#1a2e26] rounded-xl border-[6px] border-[#4a3225] shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden flex flex-col">
+            <div
+              className="flex-1 w-full bg-[#1a2e26] rounded-xl border-[6px] border-[#4a3225] shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden flex flex-col touch-pan-y"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
                 <div className="absolute top-0 left-0 right-0 h-1 bg-white/5 z-10"></div>
                 <div className="flex-1 w-full relative overflow-hidden">
                     <div className="flex w-full h-full transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]"
-                         style={{ transform: `translateX(-${activeSlideIndex * 100}%)` }}>
+                         style={{ transform: `translateX(calc(-${activeSlideIndex * 100}% + ${touchDeltaX}px))` }}>
                         {PPT_SLIDES.map((slide) => (
                             <div key={slide.id} className="min-w-full h-full relative flex items-center justify-center p-2">
                                 <div className="absolute inset-0 shadow-[inset_0_0_40px_rgba(0,0,0,0.8)] pointer-events-none z-10"></div>
@@ -348,6 +446,13 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
                 </div>
                 <div className="absolute bottom-4 right-4 z-20 bg-black/50 backdrop-blur-sm px-2 py-0.5 rounded-md text-[9px] font-mono border border-white/10 text-white/80">
                     P{activeSlideIndex + 1}
+                </div>
+
+                {/* 左右滑动提示 */}
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 opacity-50">
+                    <div className="w-6 h-px bg-white/50" />
+                    <span className="text-[8px] text-white/70">滑动切换</span>
+                    <div className="w-6 h-px bg-white/50" />
                 </div>
             </div>
         </div>
@@ -468,7 +573,7 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
                 </div>
             </div>
             <div className="flex-1 overflow-y-auto pl-14 pr-8 pt-2 scrollbar-hide pb-24 relative z-10" ref={scrollRef}>
-                <div className={`mb-8 transition-all duration-500 origin-left cursor-pointer ${currentTime < 2 ? 'opacity-100 scale-105' : 'opacity-20 grayscale'}`} onClick={() => setCurrentTime(0)}>
+                <div className={`mb-8 transition-all duration-500 origin-left cursor-pointer ${currentTime < 2 ? 'opacity-100 scale-105' : 'opacity-20 grayscale'}`} onClick={() => handleSeekTo(0)}>
                     <div className="flex items-start">
                         <div className="bg-purple-100 p-2.5 rounded-xl mr-3 shadow-sm border border-purple-200/50"><Video size={18} className="text-purple-600" /></div>
                         <div className="flex-1">
@@ -480,7 +585,7 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
                 {MOCK_TRANSCRIPT.map((seg, idx) => {
                     const isActive = currentTime >= seg.time && (idx === MOCK_TRANSCRIPT.length - 1 || currentTime < MOCK_TRANSCRIPT[idx+1].time);
                     return (
-                        <div key={idx} onClick={() => setCurrentTime(seg.time)} className={`mb-8 transition-all duration-500 cursor-pointer origin-left ${isActive ? 'opacity-100 scale-105' : 'opacity-20 grayscale'}`}>
+                        <div key={idx} onClick={() => handleSeekTo(seg.time)} className={`mb-8 transition-all duration-500 cursor-pointer origin-left ${isActive ? 'opacity-100 scale-105' : 'opacity-20 grayscale'}`}>
                             <div className="flex items-start">
                                 <div className={`mt-2.5 w-1.5 h-1.5 rounded-full mr-5 shrink-0 transition-all ${isActive ? 'bg-blue-600 ring-4 ring-blue-100' : 'bg-gray-300 opacity-50'}`}></div>
                                 <p className={`text-lg leading-relaxed ${seg.isKeypoint ? 'font-black text-blue-900 bg-yellow-200/40 rounded px-1 -mx-1 border-b-2 border-blue-500/20 shadow-sm' : 'font-medium text-gray-800'}`}>{seg.text}</p>

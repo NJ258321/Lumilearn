@@ -3,7 +3,7 @@
 // =====================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Loader2, BookOpen, RefreshCw, ChevronRight, Check } from 'lucide-react';
+import { ArrowLeft, Loader2, BookOpen, RefreshCw, ChevronRight, Check, Plus, FileQuestion } from 'lucide-react';
 import { AppView } from '../types';
 import { getMistakes, retryMistakes } from '../src/api/exams';
 import type { Mistake, MistakesResponse } from '../src/types/api';
@@ -111,10 +111,19 @@ const Mistakes: React.FC<MistakesProps> = ({ onNavigate }) => {
       {/* Mistake List */}
       <div className="flex-1 overflow-y-auto p-4">
         {!mistakesData || mistakesData.mistakes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400">
-            <BookOpen size={48} className="mb-4 opacity-30" />
-            <p className="text-sm font-bold">暂无错题记录</p>
-            <p className="text-xs mt-1">继续保持！</p>
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+              <BookOpen size={36} className="text-slate-400" />
+            </div>
+            <p className="text-base font-bold text-slate-600 mb-1">暂无错题记录</p>
+            <p className="text-sm text-slate-400 mb-6">继续保持！说明你掌握得不错</p>
+            <button
+              onClick={() => onNavigate(AppView.DRILL)}
+              className="flex items-center space-x-2 px-6 py-3 bg-blue-500 text-white rounded-xl font-medium text-sm hover:bg-blue-600 active:scale-95 transition-all"
+            >
+              <Plus size={18} />
+              <span>开始练习</span>
+            </button>
           </div>
         ) : (
           <div className="space-y-3">

@@ -187,6 +187,8 @@ export enum AppView {
   EXAM = 'EXAM',
   EXAM_RESULT = 'EXAM_RESULT',
   MISTAKES = 'MISTAKES',
+  // 备考日历
+  EXAM_CALENDAR = 'EXAM_CALENDAR',
 }
 
 export interface Task {
