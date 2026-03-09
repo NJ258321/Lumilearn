@@ -17,6 +17,7 @@ model Course {
   name            String
   status          String    @default("STUDYING") // STUDYING | REVIEWING | ARCHIVED
   type            String    @default("PROFESSIONAL") // PROFESSIONAL | CROSS_MAJOR | ELECTIVE
+  semester        String    @default("2024-2025-1")  // 学期，如 "2024-2025-1"
   examDate        DateTime?
   reviewStartDate DateTime?
   targetGrade     String? // S | A | B | C

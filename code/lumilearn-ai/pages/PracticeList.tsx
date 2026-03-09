@@ -4,7 +4,9 @@ import { AppView } from '../types';
 import { ChevronRight, AlertCircle, ChevronDown, Check, Zap, Target, Trophy, BookOpen, Clock, TrendingUp, Loader2 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { getDailyPractice, getExamStatistics, getMistakes, startChallenge, randomDraw } from '../src/api/exams';
-import type { DailyPracticeResponse, ExamStatisticsResponse, MistakesResponse } from '../src/types/api';
+import { getCourseList } from '../src/api/courses';
+import { getKnowledgeMastery } from '../src/api/statistics';
+import type { DailyPracticeResponse, ExamStatisticsResponse, MistakesResponse, Course, KnowledgeMastery } from '../src/types/api';
 
 interface PracticeListProps {
   onNavigate: (view: AppView, data?: any) => void;
@@ -20,6 +22,11 @@ const PracticeList: React.FC<PracticeListProps> = ({ onNavigate }) => {
   const [mistakes, setMistakes] = useState<MistakesResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [startingPractice, setStartingPractice] = useState(false);
+
+  // Courses and mastery data
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [masteryData, setMasteryData] = useState<Map<string, KnowledgeMastery>>(new Map());
+  const [coursesLoading, setCoursesLoading] = useState(false);
 
   // Fetch P6 data
   const fetchPracticeData = useCallback(async () => {
@@ -49,11 +56,47 @@ const PracticeList: React.FC<PracticeListProps> = ({ onNavigate }) => {
     }
   }, []);
 
+  // Fetch courses and mastery data
+  const fetchCoursesData = useCallback(async () => {
+    setCoursesLoading(true);
+    try {
+      // Fetch courses
+      const coursesRes = await getCourseList();
+      if (coursesRes.success && coursesRes.data) {
+        setCourses(coursesRes.data);
+        // Fetch mastery for each course
+        const masteryPromises = coursesRes.data.map(async (course) => {
+          const masteryRes = await getKnowledgeMastery(course.id);
+          return { courseId: course.id, mastery: masteryRes.data };
+        });
+        const masteryResults = await Promise.all(masteryPromises);
+        const masteryMap = new Map<string, KnowledgeMastery>();
+        masteryResults.forEach(result => {
+          if (result.mastery) {
+            masteryMap.set(result.courseId, result.mastery);
+          }
+        });
+        setMasteryData(masteryMap);
+      }
+    } catch (err) {
+      console.error('Fetch courses data error:', err);
+    } finally {
+      setCoursesLoading(false);
+    }
+  }, []);
+
   // Handle start challenge
-  const handleStartChallenge = async (mode: 'speed' | 'accuracy' | 'endurance') => {
+  const handleStartChallenge = async (mode: 'speed' | 'accuracy' | 'endurance', courseId?: string) => {
     setStartingPractice(true);
     try {
-      const response = await startChallenge({ courseId: 'c1', mode, count: 10 });
+      // 使用第一个课程ID或传入的courseId
+      const targetCourseId = courseId || courses[0]?.id;
+      if (!targetCourseId) {
+        console.error('No course available');
+        setStartingPractice(false);
+        return;
+      }
+      const response = await startChallenge({ courseId: targetCourseId, mode, count: 10 });
       if (response.success && response.data) {
         onNavigate(AppView.EXAM, {
           type: 'challenge',
@@ -70,10 +113,17 @@ const PracticeList: React.FC<PracticeListProps> = ({ onNavigate }) => {
   };
 
   // Handle start random practice
-  const handleStartRandom = async () => {
+  const handleStartRandom = async (courseId?: string) => {
     setStartingPractice(true);
     try {
-      const response = await randomDraw({ courseId: 'c1', count: 10 });
+      // 使用第一个课程ID或传入的courseId
+      const targetCourseId = courseId || courses[0]?.id;
+      if (!targetCourseId) {
+        console.error('No course available');
+        setStartingPractice(false);
+        return;
+      }
+      const response = await randomDraw({ courseId: targetCourseId, count: 10 });
       if (response.success && response.data) {
         onNavigate(AppView.EXAM, {
           type: 'random',
@@ -89,56 +139,23 @@ const PracticeList: React.FC<PracticeListProps> = ({ onNavigate }) => {
 
   useEffect(() => {
     fetchPracticeData();
-  }, [fetchPracticeData]);
+    fetchCoursesData();
+  }, [fetchPracticeData, fetchCoursesData]);
 
-  // 定义指定的三个课程及其展示数据
-  const displayCourses = [
-    {
-      id: 'c5',
-      name: '数据结构',
-      status: 'reviewing',
-      mastery: 85,
-      delta: 12,
-      points: 4,
-      chartValue: 85,
-    },
-    {
-      id: 'c3',
-      name: '摄影测量学',
-      status: 'reviewing',
-      mastery: 80,
-      delta: 12,
-      points: 3,
-      chartValue: 80,
-    },
-     {
-      id: 'c1',
-      name: '高等数学',
-      status: 'reviewing',
-      mastery: 72,
-      delta: 16,
-      points: 6,
-      chartValue: 72,
-    },
-     {
-      id: 'c4',
-      name: '近代史纲要',
-      status: 'studying',
-      mastery: 58,
-      delta: 5,
-      points: 3,
-      chartValue: 58,
-    },
-    {
-      id: 'c9',
-      name: '遥感原理与应用',
-      status: 'studying',
-      mastery: 69,
-      delta: 10,
-      points: 7,
-      chartValue: 69,
-    }
-  ];
+  // 从API数据构建展示课程列表
+  const displayCourses = courses.map(course => {
+    const mastery = masteryData.get(course.id);
+    const status = course.status === 'REVIEWING' ? 'reviewing' : (course.status === 'STUDYING' ? 'studying' : 'archived');
+    return {
+      id: course.id,
+      name: course.name,
+      status,
+      mastery: mastery ? Math.round(mastery.masteryRate * 100) : 0,
+      delta: mastery ? Math.round(mastery.improvementRate * 100) : 0,
+      points: mastery ? mastery.weakPoints : 0,
+      chartValue: mastery ? Math.round(mastery.masteryRate * 100) : 0,
+    };
+  }).filter(course => course.status !== 'archived');
 
   const filteredCourses = displayCourses.filter(course => {
     if (filter === 'all') return true;

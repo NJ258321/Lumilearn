@@ -2,7 +2,10 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react'
 import { ArrowLeft, ChevronRight, Flame, Play, Target, CheckCircle2, Folder, Plus, Minus, Edit3, Trash2, X, Save, HelpCircle, RotateCcw, Loader2, AlertCircle, Clock, FileText } from 'lucide-react';
 import { AppView } from '../types';
 import { getStudyRecordList, updateStudyRecord, deleteStudyRecord } from '../src/api/studyRecords';
+import { getChapterList } from '../src/api/chapters';
+import { getKnowledgePointList } from '../src/api/knowledgePoints';
 import type { StudyRecord } from '../types';
+import type { Chapter, KnowledgePoint } from '../src/types/api';
 
 interface CourseDetailReviewProps {
   onNavigate: (view: AppView, data?: any) => void;
@@ -121,7 +124,7 @@ const getDistance = (p1: React.PointerEvent, p2: React.PointerEvent) => {
 
 const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, courseId }) => {
   // --- STATE: Data ---
-  const [courseData, setCourseData] = useState(INITIAL_DATA);
+  const [courseData, setCourseData] = useState<any>(null); // 初始为空，从API获取
   const [editingNode, setEditingNode] = useState<any | null>(null);
 
   // --- API State ---
@@ -132,6 +135,54 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
   const [editingRecord, setEditingRecord] = useState<StudyRecord | null>(null);
   const [notesContent, setNotesContent] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+
+  // --- Fetch Course Chapters and Knowledge Points ---
+  const fetchCourseData = useCallback(async () => {
+    if (!courseId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      // 获取章节列表
+      const chaptersRes = await getChapterList({ courseId });
+      if (chaptersRes.success && chaptersRes.data) {
+        // 构建树形结构
+        const chapterData = chaptersRes.data;
+        // 获取每个章节的知识点
+        const chapterPromises = chapterData.map(async (chapter: Chapter) => {
+          const kpRes = await getKnowledgePointList(chapter.id);
+          const knowledgePoints = kpRes.success && kpRes.data ? kpRes.data : [];
+          return {
+            id: chapter.id,
+            title: chapter.name,
+            type: 'chapter' as const,
+            children: knowledgePoints.map((kp: KnowledgePoint) => ({
+              id: kp.id,
+              title: kp.name,
+              status: kp.status?.toLowerCase() || 'pending',
+              type: 'leaf' as const,
+              masteryScore: kp.masteryScore
+            }))
+          };
+        });
+        const chaptersWithKps = await Promise.all(chapterPromises);
+        setCourseData({
+          id: courseId,
+          title: chaptersRes.data[0]?.courseName || '课程内容',
+          children: chaptersWithKps
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch course data:', err);
+      // 如果获取失败，使用空数据
+      setCourseData({
+        id: courseId,
+        title: '课程内容',
+        children: []
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [courseId]);
 
   // --- Fetch Study Records ---
   const fetchStudyRecords = useCallback(async () => {
@@ -154,8 +205,9 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
 
   // Initial fetch
   useEffect(() => {
+    fetchCourseData();
     fetchStudyRecords();
-  }, [fetchStudyRecords]);
+  }, [fetchCourseData, fetchStudyRecords]);
 
   // --- Update Notes ---
   const handleUpdateNotes = async () => {
@@ -359,8 +411,15 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
 
   // --- LAYOUT ENGINE ---
   const { nodes, links, treeHeight, spine } = useMemo(() => {
+    // 如果数据还没加载，返回空值
+    if (!courseData) {
+      return { nodes: [], links: [], treeHeight: 0, spine: null };
+    }
+
     const nodes: VisualNode[] = [];
     const links: VisualLink[] = [];
+    const usedIds = new Set<string>(); // Track used IDs to avoid duplicates
+    let nodeIndex = 0;
     let currentY = 0;
 
     const traverse = (data: any, level: number, parentNode?: VisualNode) => {
@@ -370,12 +429,20 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
 
         if (level === 3 && !shouldShow) return null;
 
+        // Generate unique ID - add suffix if already used
+        let uniqueId = data.id || `node-${nodeIndex++}`;
+        let idSuffix = 1;
+        while (usedIds.has(uniqueId)) {
+            uniqueId = `${data.id}-${idSuffix++}` || `node-${nodeIndex++}`;
+        }
+        usedIds.add(uniqueId);
+
         const node: VisualNode = {
-            id: data.id || 'root',
+            id: uniqueId,
             title: data.title,
             type: data.type || 'root',
             x: CONFIG.LEVEL_X_OFFSET[level],
-            y: 0, 
+            y: 0,
             status: data.status,
             visible: true,
             data: data
@@ -553,6 +620,13 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
     const tgtY = link.target.y;
     const midX = (srcX + tgtX) / 2;
     return `M ${srcX} ${srcY} C ${midX} ${srcY}, ${midX} ${tgtY}, ${tgtX} ${tgtY}`;
+  };
+
+  // 如果没有数据，使用空数据结构
+  const displayData = courseData || {
+    id: courseId || '',
+    title: '加载中...',
+    children: []
   };
 
   return (

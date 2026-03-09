@@ -48,7 +48,7 @@ const PORT = process.env.PORT || 3000
 
 // CORS configuration
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:3000'],
+  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3003', 'http://127.0.0.1:5173', 'http://127.0.0.1:3000', 'http://127.0.0.1:3003'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -73,6 +73,21 @@ app.get('/health', (_req: Request, res: Response) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
+  })
+})
+
+// Time API - 获取当前时间
+app.get('/api/time', (_req: Request, res: Response) => {
+  const now = new Date()
+  res.json({
+    success: true,
+    data: {
+      timestamp: now.toISOString(),
+      date: now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }),
+      time: now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      dayOfWeek: now.toLocaleDateString('zh-CN', { weekday: 'long' }),
+      timestamp: now.getTime()
+    }
   })
 })
 

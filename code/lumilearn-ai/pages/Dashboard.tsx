@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Clock, Play, CheckCircle2, Zap, Flame, X, AlertTriangle, Moon, Loader2, RefreshCw, ChevronRight, Trash2, BookOpen, Target, TrendingUp, Brain, User, Settings, LogOut, Bell, Calendar, Plus, Video } from 'lucide-react';
-import { MOCK_TASK_GROUPS } from '../constants';
 import { AppView, Task, TaskGroup } from '../types';
 import { generateDailyPlan } from '../services/geminiService';
 import { getStudyRecordList, deleteStudyRecord, searchStudyRecords } from '../src/api/studyRecords';
@@ -9,18 +8,24 @@ import { getDashboard } from '../src/api/statistics';
 import { getTodayReview } from '../src/api/review';
 import { getDailyRecommendation } from '../src/api/recommendations';
 import { getTodayReminders } from '../src/api/reminders';
+import { optimizeReview } from '../src/api/reviewEnhance';
 import { getUser, isLoggedIn, clearToken, setUser as setUserInfo } from '../src/api/auth';
 import { clearAuthCache, onNetworkStatusChange } from '../src/utils/storage';
 import type { StudyRecord, KnowledgePoint, Dashboard, TodayReview, UserType, DailyRecommendation, TodayRemindersResponse } from '../types';
+import { api } from '../src/api/request';
 
 interface DashboardProps {
   onNavigate: (view: AppView, data?: any) => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
-  const [taskGroups, setTaskGroups] = useState<TaskGroup[]>(MOCK_TASK_GROUPS);
+  const [taskGroups, setTaskGroups] = useState<TaskGroup[]>([]);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [showWarning, setShowWarning] = useState(true);
+
+  // Backend Time State
+  const [backendTime, setBackendTime] = useState<{ date: string; time: string; dayOfWeek: string } | null>(null);
+  const [timeLoading, setTimeLoading] = useState(false);
 
   // Study Records State
   const [studyRecords, setStudyRecords] = useState<StudyRecord[]>([]);
@@ -117,6 +122,38 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     }
   }, []);
 
+  // 将今日复习数据转换为任务组格式
+  useEffect(() => {
+    if (todayReview && todayReview.items.length > 0) {
+      // 按课程分组
+      const courseMap = new Map<string, TaskGroup>();
+      todayReview.items.forEach(item => {
+        const courseName = item.courseName || '未分类';
+        if (!courseMap.has(courseName)) {
+          courseMap.set(courseName, {
+            courseId: courseName,
+            courseName,
+            tag: '今日复习',
+            tagColor: 'blue',
+            progress: `${todayReview.items.filter(i => (i.courseName || '未分类') === courseName).length}项`,
+            tasks: []
+          });
+        }
+        const group = courseMap.get(courseName)!;
+        group.tasks.push({
+          id: item.id,
+          courseName,
+          title: item.knowledgePointName,
+          duration: `${item.estimatedTime}min`,
+          status: 'pending',
+          type: item.type === 'new' ? 'review' : 'review',
+          tag: ''
+        });
+      });
+      setTaskGroups(Array.from(courseMap.values()));
+    }
+  }, [todayReview]);
+
   // P5 - Initialize user state
   useEffect(() => {
     const user = getUser();
@@ -157,6 +194,21 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     }
   }, [isLogged]);
 
+  // Fetch time from backend
+  const fetchBackendTime = useCallback(async () => {
+    setTimeLoading(true);
+    try {
+      const response = await api.get<{ date: string; time: string; dayOfWeek: string }>('/api/time');
+      if (response.success && response.data) {
+        setBackendTime(response.data);
+      }
+    } catch (err) {
+      console.error('获取时间失败', err);
+    } finally {
+      setTimeLoading(false);
+    }
+  }, []);
+
   // Handle logout - 增强清除缓存
   const handleLogout = () => {
     clearToken();
@@ -192,12 +244,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     fetchDashboardStats();
     // Fetch today's review - P4
     fetchTodayReview();
+    // Fetch backend time
+    fetchBackendTime();
     // Fetch P5 data if logged in
     if (isLogged) {
       fetchDailyRecommendations();
       fetchTodayReminders();
     }
-  }, [showRecords, fetchStudyRecords, fetchRecentKps, fetchDashboardStats, fetchTodayReview, isLogged, fetchDailyRecommendations, fetchTodayReminders]);
+  }, [showRecords, fetchStudyRecords, fetchRecentKps, fetchDashboardStats, fetchTodayReview, isLogged, fetchDailyRecommendations, fetchTodayReminders, fetchBackendTime]);
 
   // Delete Record
   const handleDeleteRecord = async (id: string) => {
@@ -251,14 +305,33 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
   const handleOptimize = async () => {
     setIsOptimizing(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    await generateDailyPlan([]); 
-    // Simulate reorder: move the last item to first
-    const newGroups = [...taskGroups];
-    const last = newGroups.pop();
-    if (last) newGroups.unshift(last);
-    setTaskGroups(newGroups);
-    setIsOptimizing(false);
+    try {
+      // 调用真实的智能优化 API
+      const response = await optimizeReview({
+        courseIds: taskGroups.map(g => g.courseId),
+        dailyStudyHours: 2,
+      });
+
+      if (response.success && response.data) {
+        // 将优化后的结果转换为 TaskGroup 格式
+        const optimizedData = response.data;
+        const newGroups = optimizedData.dailyAllocation.map((allocation, idx) => ({
+          courseId: allocation.courseName,
+          courseName: allocation.courseName,
+          tag: allocation.priority === 'high' ? '重点关注' : (allocation.priority === 'medium' ? '常规复习' : '巩固练习'),
+          tagColor: allocation.priority === 'high' ? 'red' : (allocation.priority === 'medium' ? 'orange' : 'blue'),
+          progress: `${allocation.allocatedHours}h/天`,
+          tasks: allocation.weakPoints > 0 ? [
+            { id: `${allocation.courseId}-1`, courseName: allocation.courseName, title: `攻克 ${allocation.weakPoints} 个薄弱点`, duration: `${Math.round(allocation.allocatedHours * 60)}min`, status: 'pending' as const, type: 'review' as const, tag: '' }
+          ] : []
+        }));
+        setTaskGroups(newGroups);
+      }
+    } catch (err) {
+      console.error('智能优化失败', err);
+    } finally {
+      setIsOptimizing(false);
+    }
   };
 
   const handleTaskClick = (task: Task) => {
@@ -275,32 +348,36 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
   const getTheme = (courseName: string) => {
       if (courseName.includes('数据结构')) return {
-          color: 'red',
+          color: '#ef4444',
           bg: 'bg-red-50',
-          border: 'border-red-500', 
+          bgClass: 'bg-red-500',
+          border: 'border-red-500',
           text: 'text-red-600',
           gradient: 'from-red-500 to-orange-500',
           shadow: 'shadow-[0_0_15px_rgba(239,68,68,0.3)]'
       };
       if (courseName.includes('摄影测量')) return {
-          color: 'purple',
+          color: '#a855f7',
           bg: 'bg-purple-50',
+          bgClass: 'bg-purple-500',
           border: 'border-purple-500',
           text: 'text-purple-600',
           gradient: 'from-purple-500 to-indigo-500',
           shadow: 'shadow-[0_0_15px_rgba(168,85,247,0.3)]'
       };
       if (courseName.includes('高等数学')) return {
-          color: 'blue',
+          color: '#3b82f6',
           bg: 'bg-blue-50',
+          bgClass: 'bg-blue-500',
           border: 'border-blue-500',
           text: 'text-blue-600',
           gradient: 'from-blue-500 to-blue-600',
           shadow: 'shadow-none'
       };
       return {
-          color: 'slate',
+          color: '#64748b',
           bg: 'bg-slate-50',
+          bgClass: 'bg-slate-400',
           border: 'border-slate-300',
           text: 'text-slate-600',
           gradient: 'from-slate-400 to-slate-500',
@@ -328,9 +405,20 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         <div className="flex justify-between items-start mb-2">
           <div>
             <div className="text-xs font-bold text-blue-500 tracking-widest mb-1 uppercase">Dashboard</div>
-            <div className="text-3xl font-extrabold text-slate-800 tracking-tight flex items-baseline leading-none">
-              Jan 25 <span className="text-sm font-normal text-slate-400 ml-2">Sunday</span>
-            </div>
+            {timeLoading ? (
+              <div className="text-3xl font-extrabold text-slate-800 tracking-tight flex items-baseline leading-none">
+                <Loader2 className="animate-spin mr-2" size={24} />
+              </div>
+            ) : backendTime ? (
+              <div className="text-3xl font-extrabold text-slate-800 tracking-tight flex items-baseline leading-none">
+                {backendTime.date.split('月')[0]}月{backendTime.date.split('月')[1]?.replace('日', '') || ''}日 <span className="text-sm font-normal text-slate-400 ml-2">{backendTime.dayOfWeek}</span>
+                <span className="text-sm font-bold text-blue-500 ml-3">{backendTime.time}</span>
+              </div>
+            ) : (
+              <div className="text-3xl font-extrabold text-slate-800 tracking-tight flex items-baseline leading-none">
+                --月--日 <span className="text-sm font-normal text-slate-400 ml-2">--</span>
+              </div>
+            )}
             <div className="flex space-x-1.5 mt-3">
               {[...Array(7)].map((_, i) => (
                 <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === 6 ? 'w-6 bg-orange-400 shadow-[0_0_8px_rgba(251,146,60,0.6)]' : 'w-1.5 bg-slate-200'}`}></div>
@@ -339,118 +427,128 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           </div>
 
           <div className="flex flex-col space-y-2 items-end pt-1">
-            {/* 备考日历入口 - FE-09 */}
-            <button
-              onClick={() => onNavigate(AppView.EXAM_CALENDAR)}
-              className="bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl px-4 py-2 shadow-lg flex items-center space-x-2 active:scale-95 transition-transform"
-              title="备考日历"
-            >
-              <Calendar size={14} className="text-white" />
-              <span className="text-xs font-bold text-white">备考日历</span>
-            </button>
-
-            {/* P4 Statistics Cards */}
-            {!dashboardLoading && dashboardData && (
-              <div className="flex space-x-2">
-                {/* Courses Count */}
-                <div className="bg-white/90 backdrop-blur-md border border-slate-100 rounded-2xl px-3 py-2 shadow-lg flex items-center space-x-1.5">
-                  <BookOpen size={14} className="text-blue-500" />
-                  <span className="text-xs font-bold text-slate-600">{dashboardData.coursesCount}</span>
-                  <span className="text-[10px] text-slate-400">课程</span>
-                </div>
-                {/* Knowledge Points Progress */}
-                <div className="bg-white/90 backdrop-blur-md border border-slate-100 rounded-2xl px-3 py-2 shadow-lg flex items-center space-x-1.5">
-                  <Brain size={14} className="text-purple-500" />
-                  <span className="text-xs font-bold text-slate-600">
-                    {dashboardData.knowledgePoints.mastered}/{dashboardData.knowledgePoints.total}
-                  </span>
-                  <span className="text-[10px] text-slate-400">掌握</span>
-                </div>
-              </div>
-            )}
-
-            {/* Today's Review Count - P4 */}
-            {!todayReviewLoading && todayReview && todayReview.totalItems > 0 && (
-              <div className="bg-white/90 backdrop-blur-md border border-amber-200 rounded-2xl px-3 py-2 shadow-lg flex items-center space-x-1.5">
-                <Target size={14} className="text-amber-500" />
-                <span className="text-xs font-bold text-slate-600">{todayReview.totalItems}</span>
-                <span className="text-[10px] text-slate-400">今日复习</span>
-              </div>
-            )}
-
-            {/* P5 - Today's Reminders - Show when logged in */}
-            {!remindersLoading && todayReminders && todayReminders.reminders && todayReminders.reminders.length > 0 && (
-              <div className="bg-white/90 backdrop-blur-md border border-red-200 rounded-2xl px-3 py-2 shadow-lg flex items-center space-x-1.5">
-                <Bell size={14} className="text-red-500" />
-                <span className="text-xs font-bold text-slate-600">{todayReminders.statistics.total}</span>
-                <span className="text-[10px] text-slate-400">提醒</span>
-              </div>
-            )}
-
-            {/* P5 - User Auth Button */}
-            {isLogged && currentUser ? (
-              <div className="flex items-center space-x-1">
-                {/* Settings Button */}
-                <button
-                  onClick={() => onNavigate(AppView.SETTINGS)}
-                  className="bg-white/90 backdrop-blur-md border border-slate-100 rounded-full p-2 shadow-lg active:scale-95 transition-transform"
-                  title="设置"
-                >
-                  <Settings size={14} className="text-slate-500" />
-                </button>
-                {/* User Avatar */}
-                <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-full w-8 h-8 flex items-center justify-center shadow-lg">
-                  <span className="text-white text-xs font-bold">
-                    {currentUser.displayName?.charAt(0) || currentUser.username?.charAt(0) || 'U'}
-                  </span>
-                </div>
-                {/* Logout Button */}
-                <button
-                  onClick={handleLogout}
-                  className="bg-white/90 backdrop-blur-md border border-slate-100 rounded-full p-2 shadow-lg active:scale-95 transition-transform"
-                  title="退出登录"
-                >
-                  <LogOut size={14} className="text-slate-500" />
-                </button>
-              </div>
-            ) : (
+            {/* 第一行：日历 + 登录/用户 */}
+            <div className="flex items-center space-x-2">
+              {/* 备考日历入口 - FE-09 */}
               <button
-                onClick={() => onNavigate(AppView.AUTH)}
-                className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl px-4 py-2 shadow-lg flex items-center space-x-1.5 active:scale-95 transition-transform"
+                onClick={() => onNavigate(AppView.EXAM_CALENDAR)}
+                className="bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl px-4 py-2 shadow-lg flex items-center space-x-2 active:scale-95 transition-transform"
+                title="备考日历"
               >
-                <User size={14} className="text-white" />
-                <span className="text-xs font-bold text-white">登录</span>
+                <Calendar size={14} className="text-white" />
+                <span className="text-xs font-bold text-white">日历</span>
               </button>
-            )}
 
-            {/* Recent Study Records Button */}
-            <button
-                onClick={() => setShowRecords(!showRecords)}
-                className={`bg-white/90 backdrop-blur-md border rounded-2xl px-4 py-2 shadow-lg flex items-center space-x-2 active:scale-95 transition-transform ${
-                    showRecords ? 'border-blue-300' : 'border-slate-100'
-                }`}
-            >
-                <Clock size={14} className={showRecords ? 'text-blue-600' : 'text-slate-500'} />
-                <span className="text-xs font-bold text-slate-600">学习记录</span>
-                {studyRecords.length > 0 && (
-                    <span className="bg-blue-100 text-blue-600 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-                        {studyRecords.length}
+              {/* P5 - User Auth Button */}
+              {isLogged && currentUser ? (
+                <div className="flex items-center space-x-1">
+                  {/* Settings Button */}
+                  <button
+                    onClick={() => onNavigate(AppView.SETTINGS)}
+                    className="bg-white/90 backdrop-blur-md border border-slate-100 rounded-full p-2 shadow-lg active:scale-95 transition-transform"
+                    title="设置"
+                  >
+                    <Settings size={14} className="text-slate-500" />
+                  </button>
+                  {/* User Avatar */}
+                  <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-full w-8 h-8 flex items-center justify-center shadow-lg">
+                    <span className="text-white text-xs font-bold">
+                      {currentUser.displayName?.charAt(0) || currentUser.username?.charAt(0) || 'U'}
                     </span>
-                )}
-            </button>
-
-            {/* Enlarged Countdown Panel */}
-            <div className="bg-white/90 backdrop-blur-md border border-red-100 rounded-2xl px-4 py-3 shadow-lg flex items-center space-x-4 w-[170px] relative overflow-hidden active:scale-95 transition-transform cursor-pointer">
-              <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-500"></div>
-              <div className="flex-1">
-                <div className="text-xs text-slate-500 font-bold mb-0.5">数据结构期末</div>
-                <div className="text-2xl font-black text-slate-800 flex items-baseline leading-none">
-                  3 <span className="text-xs font-bold text-red-500 ml-1">天!</span>
+                  </div>
+                  {/* Logout Button */}
+                  <button
+                    onClick={handleLogout}
+                    className="bg-white/90 backdrop-blur-md border border-slate-100 rounded-full p-2 shadow-lg active:scale-95 transition-transform"
+                    title="退出登录"
+                  >
+                    <LogOut size={14} className="text-slate-500" />
+                  </button>
                 </div>
-              </div>
-              <Flame size={24} className="text-red-500 animate-pulse" fill="#EF4444" fillOpacity={0.2} />
+              ) : (
+                <button
+                  onClick={() => onNavigate(AppView.AUTH)}
+                  className="bg-white border border-slate-200 rounded-2xl px-4 py-2 shadow-lg flex items-center space-x-1.5 active:scale-95 transition-transform"
+                >
+                  <User size={14} className="text-slate-600" />
+                  <span className="text-xs font-bold text-slate-700">登录</span>
+                </button>
+              )}
             </div>
-            
+
+            {/* 第二行：统计信息汇总 */}
+            <div className="flex flex-wrap justify-end gap-2 max-w-[280px]">
+              {/* P4 Statistics Cards */}
+              {!dashboardLoading && dashboardData && (
+                <>
+                  {/* Courses Count */}
+                  <div className="bg-white/90 backdrop-blur-md border border-slate-100 rounded-2xl px-3 py-2 shadow-lg flex items-center space-x-1.5">
+                    <BookOpen size={14} className="text-blue-500" />
+                    <span className="text-xs font-bold text-slate-600">{dashboardData.coursesCount}</span>
+                    <span className="text-[10px] text-slate-400">课程</span>
+                  </div>
+                  {/* Knowledge Points Progress */}
+                  <div className="bg-white/90 backdrop-blur-md border border-slate-100 rounded-2xl px-3 py-2 shadow-lg flex items-center space-x-1.5">
+                    <Brain size={14} className="text-purple-500" />
+                    <span className="text-xs font-bold text-slate-600">
+                      {dashboardData.knowledgePoints.mastered}/{dashboardData.knowledgePoints.total}
+                    </span>
+                    <span className="text-[10px] text-slate-400">掌握</span>
+                  </div>
+                </>
+              )}
+
+              {/* Today's Review Count - P4 */}
+              {!todayReviewLoading && todayReview && todayReview.totalItems > 0 && (
+                <div className="bg-white/90 backdrop-blur-md border border-amber-200 rounded-2xl px-3 py-2 shadow-lg flex items-center space-x-1.5">
+                  <Target size={14} className="text-amber-500" />
+                  <span className="text-xs font-bold text-slate-600">{todayReview.totalItems}</span>
+                  <span className="text-[10px] text-slate-400">复习</span>
+                </div>
+              )}
+
+              {/* P5 - Today's Reminders - Show when logged in */}
+              {!remindersLoading && todayReminders && todayReminders.reminders && todayReminders.reminders.length > 0 && (
+                <div className="bg-white/90 backdrop-blur-md border border-red-200 rounded-2xl px-3 py-2 shadow-lg flex items-center space-x-1.5">
+                  <Bell size={14} className="text-red-500" />
+                  <span className="text-xs font-bold text-slate-600">{todayReminders.statistics.total}</span>
+                  <span className="text-[10px] text-slate-400">提醒</span>
+                </div>
+              )}
+            </div>
+
+            {/* 第三行：学习记录 + 倒计时 */}
+            <div className="flex items-center space-x-2 w-full justify-end">
+              {/* Recent Study Records Button */}
+              <button
+                  onClick={() => setShowRecords(!showRecords)}
+                  className={`bg-white/90 backdrop-blur-md border rounded-2xl px-4 py-2 shadow-lg flex items-center space-x-2 active:scale-95 transition-transform ${
+                      showRecords ? 'border-blue-300' : 'border-slate-100'
+                  }`}
+              >
+                  <Clock size={14} className={showRecords ? 'text-blue-600' : 'text-slate-500'} />
+                  <span className="text-xs font-bold text-slate-600">记录</span>
+                  {studyRecords.length > 0 && (
+                      <span className="bg-blue-100 text-blue-600 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                          {studyRecords.length}
+                      </span>
+                  )}
+              </button>
+
+              {/* Enlarged Countdown Panel */}
+              <div className="bg-white/90 backdrop-blur-md border border-red-100 rounded-2xl px-4 py-3 shadow-lg flex items-center space-x-4 w-[170px] relative overflow-hidden active:scale-95 transition-transform cursor-pointer">
+                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-500"></div>
+                <div className="flex-1">
+                  <div className="text-xs text-slate-500 font-bold mb-0.5">数据结构期末</div>
+                  <div className="text-2xl font-black text-slate-800 flex items-baseline leading-none">
+                    3 <span className="text-xs font-bold text-red-500 ml-1">天!</span>
+                  </div>
+                </div>
+                <Flame size={24} className="text-red-500 animate-pulse" fill="#EF4444" fillOpacity={0.2} />
+              </div>
+            </div>
+
+            {/* 摄影测量倒计时 */}
             <div className="bg-white/60 backdrop-blur-sm border border-slate-100 rounded-xl px-3 py-2 flex items-center justify-between w-[140px] shadow-sm">
                <div className="text-[10px] font-bold text-slate-500">摄影测量</div>
                <div className="text-sm font-black text-purple-600">6 <span className="text-[9px] font-normal text-slate-400">天</span></div>
@@ -570,44 +668,40 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             </div>
           )}
 
-          {/* --- The Visual Spine (Left) --- */}
-          {/* Main vertical line */}
-          <div className="absolute left-[64px] top-4 bottom-0 w-[2px] bg-slate-200"></div>
-          
-          {/* Gradient Overlay for Past (Simulated) */}
-          <div className="absolute left-[64px] top-4 h-[250px] w-[2px] bg-gradient-to-b from-blue-400 via-blue-200 to-slate-200 z-10"></div>
+          {/* 移除绝对定位的垂直线，改用 Flex 布局 */}
 
-
-          {/* --- Render Timeline Groups --- */}
+          {/* --- Render Timeline Groups - 使用 Flex 布局 --- */}
           {timelineGroups.map((group, index) => {
               const theme = getTheme(group.courseName);
               const isActiveGroup = index === 0;
 
               return (
-                <div key={group.courseId} className={`relative mb-12 transition-all duration-500 animate-in slide-in-from-bottom-8 fade-in`} style={{ animationDelay: `${index * 100}ms` }}>
-                    
-                    {/* 1. Time Column (Left) */}
-                    <div className="absolute left-0 top-0 w-[50px] text-right pr-2">
-                        <span className={`block text-sm font-bold font-mono leading-none ${isActiveGroup ? 'text-slate-800' : 'text-slate-400'}`}>{group.time}</span>
-                        <span className="block text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter opacity-80">{group.period}</span>
+                <div key={group.courseId} className={`flex items-stretch min-h-[100px] mb-8 transition-all duration-500 animate-in slide-in-from-bottom-8 fade-in`} style={{ animationDelay: `${index * 100}ms` }}>
+
+                    {/* 1. Time Column (Left) - w-[70px] */}
+                    <div className="w-[70px] flex flex-col justify-center pt-2">
+                        <span className={`block text-sm font-bold font-mono leading-none text-right ${isActiveGroup ? 'text-slate-800' : 'text-slate-400'}`}>{group.time}</span>
+                        <span className={`block text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter opacity-80 text-right`}>{group.period}</span>
                     </div>
 
-                    {/* 2. Axis Node (Center) */}
-                    <div className="absolute left-[55px] top-0 z-20 flex items-center justify-center w-5 h-5">
-                         {/* Connector line from node to right content */}
-                         {/* Outer Ring */}
-                        <div className={`w-4 h-4 rounded-full border-2 bg-white flex items-center justify-center ${isActiveGroup ? theme.border : 'border-slate-300'}`}>
-                             {/* Inner Dot */}
-                             <div className={`w-1.5 h-1.5 rounded-full ${isActiveGroup ? theme.bg.replace('bg-', 'bg-').replace('-50', '-500') : 'bg-slate-300'}`}></div>
+                    {/* 2. Axis Node (Center) - w-12 (48px) */}
+                    <div className="w-12 flex flex-col items-center pt-1">
+                        {/* Top Line */}
+                        <div className="w-0.5 h-4 bg-slate-200" />
+                        {/* Dot */}
+                        <div className={`relative w-5 h-5 rounded-full border-2 bg-white flex items-center justify-center ${isActiveGroup ? theme.border : 'border-slate-300'}`}>
+                            <div className={`w-1.5 h-1.5 rounded-full ${isActiveGroup ? theme.bg.replace('bg-', 'bg-').replace('-50', '-500') : 'bg-slate-300'}`}></div>
+                            {/* Ping Effect for Active */}
+                            {isActiveGroup && (
+                                <span className={`absolute w-full h-full rounded-full animate-ping opacity-75 ${theme.bg.replace('bg-', 'bg-').replace('-50', '-400')}`}></span>
+                            )}
                         </div>
-                        {/* Ping Effect for Active */}
-                        {isActiveGroup && (
-                            <span className={`absolute w-full h-full rounded-full animate-ping opacity-75 ${theme.bg.replace('bg-', 'bg-').replace('-50', '-400')}`}></span>
-                        )}
+                        {/* Bottom Line */}
+                        <div className="flex-1 w-0.5 bg-slate-200" />
                     </div>
 
                     {/* 3. Content Area (Right) */}
-                    <div className="pl-[80px]">
+                    <div className="flex-1 pt-0.5">
                         {/* Course Header */}
                         <div className="flex items-center mb-3">
                             <h3 className={`text-base font-extrabold ${isActiveGroup ? 'text-slate-800' : 'text-slate-500'}`}>{group.courseName}</h3>
@@ -664,13 +758,20 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
               );
           })}
 
-          {/* End Node */}
-          <div className="relative h-16 opacity-50">
-                <div className="absolute left-0 top-0 w-[50px] text-right pr-2">
-                    <span className="block text-sm font-bold text-slate-400 font-mono">22:30</span>
+          {/* End Node - 使用 Flex 布局 */}
+          <div className="flex items-stretch h-16 opacity-50">
+                {/* 左侧时间 */}
+                <div className="w-[70px] flex flex-col justify-center">
+                    <span className="block text-sm font-bold text-slate-400 font-mono text-right">22:30</span>
                 </div>
-                <div className="absolute left-[64px] top-2 -translate-x-1/2 w-3 h-3 rounded-full bg-slate-300 border-2 border-slate-100 z-20"></div>
-                <div className="pl-[80px] pt-0.5 flex items-center text-slate-400">
+                {/* 中间轴线 */}
+                <div className="w-12 flex flex-col items-center">
+                    <div className="w-0.5 h-4 bg-slate-200" />
+                    <div className="w-3 h-3 rounded-full bg-slate-300 border-2 border-slate-100" />
+                    <div className="flex-1 w-0.5 bg-slate-200" />
+                </div>
+                {/* 右侧内容 */}
+                <div className="flex-1 flex items-center text-slate-400">
                     <Moon size={14} className="mr-2" />
                     <span className="text-xs font-bold">Bedtime</span>
                 </div>

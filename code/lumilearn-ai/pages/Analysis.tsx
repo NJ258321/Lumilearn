@@ -2,10 +2,10 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { HelpCircle, AlertCircle, ChevronRight, PlayCircle, Info, BookOpen, ChevronDown, Check, X, Target, Zap, Clock, MessageSquare, Bot, Search, TrendingUp, Brain, BarChart3, Activity, Loader2 } from 'lucide-react';
 import { AppView } from '../types';
-import { MOCK_COURSES } from '../constants';
 import { getKnowledgeMastery } from '../src/api/statistics';
+import { getCourseList } from '../src/api/courses';
 import { getKnowledgeCorrelation, getLearningSequence, getBottlenecks, generateEvaluation, getLearningEfficiency, getComparisonAnalysis } from '../src/api/analysis';
-import type { KnowledgeMastery, KnowledgeCorrelationResponse, LearningSequenceResponse, BottleneckResponse, LearningEvaluation, LearningEfficiency, ComparisonAnalysis, GenerateEvaluationRequest } from '../types';
+import type { KnowledgeMastery, KnowledgeCorrelationResponse, LearningSequenceResponse, BottleneckResponse, LearningEvaluation, LearningEfficiency, ComparisonAnalysis, GenerateEvaluationRequest, Course, Bottleneck } from '../types';
 
 interface AnalysisProps {
   onNavigate: (view: AppView) => void;
@@ -30,6 +30,10 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
   const [evaluation, setEvaluation] = useState<LearningEvaluation | null>(null);
   const [efficiency, setEfficiency] = useState<LearningEfficiency | null>(null);
   const [comparison, setComparison] = useState<ComparisonAnalysis | null>(null);
+
+  // Courses state
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState(false);
 
   // P4 - Fetch Knowledge Mastery
   const fetchKnowledgeMastery = useCallback(async () => {
@@ -176,43 +180,51 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
     }
   };
 
-  const weakPoints = [
-    {
-      id: 1,
-      title: "函数极限的定义",
-      desc: `该考点是${selectedCourseName}的基础。近期错误率 85%， ε-δ 定义逻辑转化存在障碍。`,
-      tag: "Top Weak Point",
-      color: "red",
-      icon: AlertCircle
-    },
-    {
-      id: 2,
-      title: "泰勒公式展开",
-      desc: "余项形式记忆混淆，在求极限时的阶数控制不准确。近期错误率 72%。",
-      tag: "High Frequency",
-      color: "orange",
-      icon: Zap
-    },
-    {
-      id: 3,
-      title: "不定积分计算",
-      desc: "凑微分法运用不熟练，三角代换易出错。近三次作业平均得分率 60%。",
-      tag: "Needs Practice",
-      color: "blue",
-      icon: Target
-    }
-  ];
-
   const getCardStyles = (color: string) => {
       if (color === 'red') return { iconBg: 'bg-red-500', shadow: 'shadow-red-100', tag: 'text-slate-400', btn: 'bg-[#4285F4]' };
       if (color === 'orange') return { iconBg: 'bg-orange-500', shadow: 'shadow-orange-100', tag: 'text-slate-400', btn: 'bg-orange-500' };
       return { iconBg: 'bg-blue-500', shadow: 'shadow-blue-100', tag: 'text-slate-400', btn: 'bg-blue-500' };
   };
 
-  // 过滤课程列表
-  const filteredCourses = MOCK_COURSES.filter(c => 
+  // Fetch courses on mount
+  useEffect(() => {
+    const fetchCourses = async () => {
+      setCoursesLoading(true);
+      try {
+        const response = await getCourseList();
+        if (response.success && response.data) {
+          setCourses(response.data);
+          // Set initial course if not provided
+          if (!currentCourseId && response.data.length > 0) {
+            setSelectedCourseName(response.data[0].name);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch courses:', err);
+      } finally {
+        setCoursesLoading(false);
+      }
+    };
+    fetchCourses();
+  }, []);
+
+  // 过滤课程列表 - 使用真实的 courses
+  const filteredCourses = courses.filter(c =>
     c.name.toLowerCase().includes(searchText.toLowerCase())
   );
+
+  // 从 bottlenecks 转换为 weakPoints 格式
+  const weakPoints = React.useMemo(() => {
+    if (!bottlenecks?.bottlenecks) return [];
+    return bottlenecks.bottlenecks.slice(0, 5).map((bp: Bottleneck, idx: number) => ({
+      id: idx,
+      title: bp.name,
+      desc: bp.reasons.join('；') || `该考点是${bottlenecks.courseName}的薄弱点。`,
+      tag: bp.difficulty === 'hard' ? 'Top Weak Point' : (bp.difficulty === 'medium' ? 'High Frequency' : 'Needs Practice'),
+      color: bp.difficulty === 'hard' ? 'red' : (bp.difficulty === 'medium' ? 'orange' : 'blue'),
+      icon: AlertCircle
+    }));
+  }, [bottlenecks]);
 
   return (
     <div className="flex flex-col h-screen bg-[#F7F9FC] font-sans relative overflow-hidden">

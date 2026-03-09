@@ -31,12 +31,22 @@ class ApiClient {
     const url = `${this.baseUrl}${endpoint}`
 
     try {
+      // 提取自定义 headers，移除内部的 _skipDefaultContentType 标记
+      const customHeaders = (options.headers as Record<string, string>) || {}
+      const skipDefaultContentType = (customHeaders as any)._skipDefaultContentType
+      const sanitizedHeaders = { ...customHeaders }
+      delete (sanitizedHeaders as any)._skipDefaultContentType
+
+      // 只有当没有明确设置 Content-Type 且不是跳过默认时才添加 JSON 头
+      const hasContentType = Object.keys(sanitizedHeaders).some(k => k.toLowerCase() === 'content-type')
+
+      const headers = hasContentType || skipDefaultContentType
+        ? sanitizedHeaders
+        : { ...sanitizedHeaders, 'Content-Type': 'application/json' }
+
       const response = await fetch(url, {
         ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
+        headers,
       })
 
       const data = await response.json()
@@ -45,7 +55,8 @@ class ApiClient {
       if (!response.ok || !data.success) {
         // 尝试从响应中获取错误码
         const errorCode = data.code
-        const originalError = data.error
+        // 处理 error 可能是对象或字符串的情况
+        const originalError = typeof data.error === 'string' ? data.error : data.error?.message
         // 使用错误码映射转换为友好提示
         const friendlyError = getErrorMessage(errorCode, originalError)
 
@@ -103,7 +114,7 @@ class ApiClient {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: formData,
-      headers: {}, // 不设置 Content-Type，让浏览器自动处理
+      headers: { _skipDefaultContentType: true } as any, // 跳过默认的 JSON Content-Type，让浏览器自动处理 multipart/form-data
     })
   }
 
