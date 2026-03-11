@@ -15,7 +15,10 @@ export const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '10485760') /
 export const AUDIO_TYPES = [
   'audio/mpeg',
   'audio/wav',
+  'audio/wave',
+  'audio/x-wav',
   'audio/m4a',
+  'audio/mp4',
   'audio/mp3',
   'audio/x-m4a',
   'audio/webm',

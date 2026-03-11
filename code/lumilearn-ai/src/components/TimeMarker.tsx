@@ -3,7 +3,7 @@
 // 支持添加标记、编辑标记、快速标记重点、Toast 提示
 // =====================================================
 
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useImperativeHandle, forwardRef } from 'react'
 import { Flag, Edit3, Trash2, X, Check, AlertCircle, Loader2, Plus, Sparkles } from 'lucide-react'
 import type { TimeMark, TimeMarkType } from '../../types'
 import { createTimeMark, updateTimeMark, deleteTimeMark, quickMarkEmphasis } from '../api/timeMarks'
@@ -23,13 +23,13 @@ const MARK_TYPE_OPTIONS: { value: TimeMarkType; label: string; color: string }[]
   { value: 'BOARD_CHANGE', label: '板书', color: 'bg-purple-100 text-purple-600 border-purple-200' },
 ]
 
-const TimeMarker: React.FC<TimeMarkerProps> = ({
+const TimeMarker = forwardRef<{ openAddModal: () => void }, TimeMarkerProps>(({
   studyRecordId,
   currentTime,
   timeMarks,
   onMarksChange,
   onSeekTo,
-}) => {
+}, ref) => {
   // State
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -197,6 +197,18 @@ const TimeMarker: React.FC<TimeMarkerProps> = ({
     return option?.color || 'bg-gray-100 text-gray-600'
   }
 
+  // 暴露方法给父组件
+  useImperativeHandle(ref, () => ({
+    openAddModal: () => {
+      setFormData({
+        timestamp: Math.floor(currentTime),
+        type: 'EMPHASIS',
+        noteText: '',
+      })
+      setShowAddModal(true)
+    }
+  }))
+
   return (
     <div className="relative">
       {/* Error Toast */}
@@ -227,16 +239,6 @@ const TimeMarker: React.FC<TimeMarkerProps> = ({
       >
         {loading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
         <span>快速标记</span>
-      </button>
-
-      {/* Add Button */}
-      <button
-        onClick={openAddModal}
-        className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-full text-blue-600 text-xs font-bold hover:bg-blue-100 active:scale-95 transition-all"
-        title="添加时间标记"
-      >
-        <Plus size={14} />
-        <span>添加标记</span>
       </button>
 
       {/* Time Marks List */}
@@ -455,6 +457,6 @@ const TimeMarker: React.FC<TimeMarkerProps> = ({
       )}
     </div>
   )
-}
+})
 
 export default TimeMarker

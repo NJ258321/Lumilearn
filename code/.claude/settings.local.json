@@ -6,7 +6,9 @@
       "Bash(curl:*)",
       "Bash(netstat:*)",
       "Bash(taskkill:*)",
-      "Bash(npx prisma:*)"
+      "Bash(npx prisma:*)",
+      "Bash(npx tsc:*)",
+      "WebSearch"
     ]
   }
 }

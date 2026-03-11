@@ -1,11 +1,12 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
-import { Search, MoreHorizontal, ChevronUp, ChevronDown, Plus, Edit2, RefreshCw, Info, Trash2, X, Archive, BookOpen, Clock, CalendarRange, Network, Layers, Zap, Book, Loader2 } from 'lucide-react';
+import { Search, MoreHorizontal, ChevronUp, ChevronDown, Plus, Edit2, RefreshCw, Info, Trash2, X, Archive, BookOpen, Clock, CalendarRange, Network, Layers, Zap, Book, Loader2, Edit3 } from 'lucide-react';
 import * as d3 from 'd3';
 import { AppView, Course } from '../types';
 import { getCourseList } from '../src/api/courses';
 
 interface CoursesProps {
   onNavigate: (view: AppView, courseId?: string) => void;
+  onCourseSelect?: (courseId: string, mode: 'study' | 'review') => void;
 }
 
 // --- Types for Timeline Layout ---
@@ -67,7 +68,7 @@ const CONFIG = {
 
 type SheetMode = 'MENU' | 'RENAME' | 'STATUS' | 'DELETE' | 'INFO';
 
-const Courses: React.FC<CoursesProps> = ({ onNavigate }) => {
+const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -467,7 +468,7 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate }) => {
                                         className="transition-transform duration-300"
                                         style={{ pointerEvents: 'auto', cursor: 'pointer' }}
                                         onPointerDown={(e) => e.stopPropagation()} 
-                                        onClick={() => onNavigate(node.status === 'studying' ? AppView.COURSE_DETAIL_STUDY : AppView.COURSE_DETAIL_REVIEW, node.id)}
+                                        onClick={() => onCourseSelect ? onCourseSelect(node.id, node.status === 'studying' ? 'study' : 'review') : onNavigate(AppView.COURSE_DETAIL_STUDY, node.id)}
                                         onMouseEnter={() => setHoveredNode(node.id)}
                                         onMouseLeave={() => setHoveredNode(null)}
                                      >
@@ -557,7 +558,7 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate }) => {
                             <div 
                                 key={node.id}
                                 onPointerDown={(e) => e.stopPropagation()}
-                                onClick={() => onNavigate(node.data.status === 'studying' ? AppView.COURSE_DETAIL_STUDY : AppView.COURSE_DETAIL_REVIEW, node.data.id)}
+                                onClick={() => onCourseSelect ? onCourseSelect(node.data.id, node.data.status === 'studying' ? 'study' : 'review') : onNavigate(AppView.COURSE_DETAIL_STUDY, node.data.id)}
                                 className={`absolute transform -translate-x-1/2 -translate-y-1/2 bg-white w-[200px] h-[40px] rounded-lg shadow-sm border border-slate-100 flex items-center justify-between px-3 hover:scale-105 transition-all cursor-pointer group z-30 ${isReviewing ? 'ring-2 ring-red-50' : ''}`}
                                 style={{ left: node.x, top: node.y }}
                             >   
@@ -635,7 +636,7 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate }) => {
                         {reviewingCourses.map(course => (
                             <div 
                                 key={course.id}
-                                onClick={() => onNavigate(AppView.COURSE_DETAIL_REVIEW, course.id)}
+                                onClick={() => onCourseSelect ? onCourseSelect(course.id, 'review') : onNavigate(AppView.COURSE_DETAIL_STUDY, course.id)}
                                 className="snap-start flex-shrink-0 w-[150px] h-[90px] bg-white rounded-xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] border border-slate-100 relative active:scale-95 transition-transform flex flex-col justify-between group"
                             >
                                 <div className="flex justify-between items-start">
@@ -667,7 +668,7 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate }) => {
                         {studyingCourses.map(course => (
                             <div 
                                 key={course.id}
-                                onClick={() => onNavigate(AppView.COURSE_DETAIL_STUDY, course.id)}
+                                onClick={() => onCourseSelect ? onCourseSelect(course.id, 'study') : onNavigate(AppView.COURSE_DETAIL_STUDY, course.id)}
                                 className="snap-start flex-shrink-0 w-[150px] h-[90px] bg-slate-50 rounded-xl p-3 border border-slate-100 relative active:scale-95 transition-transform flex flex-col justify-between opacity-90 group"
                             >
                                 <div className="flex justify-between items-start">
@@ -707,14 +708,13 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate }) => {
                 </div>
             </div>
             <div className="flex space-x-4 text-slate-500">
-                <button 
-                    onClick={isPanelOpen ? handleShowGraph : handleResetView} 
-                    className={`active:scale-90 transition-transform ${!isPanelOpen ? 'text-blue-500 bg-blue-50 p-1.5 rounded-lg' : ''}`}
-                    title={isPanelOpen ? "View Relationship Graph" : "Reset View"}
+                <button
+                    onClick={() => onNavigate(AppView.COURSE_MANAGER)}
+                    className="active:scale-90 transition-transform text-blue-500"
+                    title="课程管理"
                 >
-                    {isPanelOpen ? <Network size={18} /> : <RefreshCw size={18} />}
+                    <Edit3 size={20} />
                 </button>
-                <Search size={20} />
             </div>
         </div>
 

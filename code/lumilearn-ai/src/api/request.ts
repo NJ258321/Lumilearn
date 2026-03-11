@@ -91,7 +91,7 @@ class ApiClient {
    * GET 请求
    */
   async get<T>(endpoint: string, params?: Record<string, unknown>): Promise<ApiResponse<T>> {
-    const url = params
+    const url = params && Object.keys(params).length > 0
       ? `${endpoint}?${new URLSearchParams(params as Record<string, string>).toString()}`
       : endpoint
     return this.request<T>(url, { method: 'GET' })
@@ -168,6 +168,8 @@ export const API_CONFIG = {
     knowledgePoints: '/api/knowledge-points',
     weakPoints: '/api/knowledge-points/weak',
     recentlyReviewed: '/api/knowledge-points/recently-reviewed',
+    // 错题与薄弱点
+    mistakeWeakPoints: '/api/mistakes/weak-points',
     // 学习记录
     studyRecords: '/api/study-records',
     studyRecordsSearch: '/api/study-records/search',

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Play, Pause, ChevronLeft, ChevronRight, Share2, Lightbulb, Sparkles, Video, Flag, Camera, HelpCircle, X, Loader2 } from 'lucide-react';
+import { ArrowLeft, Play, Pause, ChevronLeft, ChevronRight, Share2, Lightbulb, Sparkles, Video, Flag, Camera, HelpCircle, X, Loader2, Plus } from 'lucide-react';
 import { AppView } from '../types';
 import TimeMarker from '../src/components/TimeMarker';
 import Timeline from '../src/components/Timeline';
@@ -10,6 +10,7 @@ import AIPanel from '../src/components/AIPanel';
 import { getTimeMarkList, getRelatedMarks } from '../src/api/timeMarks';
 import { getStudyRecordById } from '../src/api/studyRecords';
 import { getKnowledgePointList } from '../src/api/knowledgePoints';
+import { API_CONFIG } from '../src/api/request';
 import type { TimeMark, StudyRecord, KnowledgePoint } from '../types';
 
 interface TimeMachineProps {
@@ -17,15 +18,30 @@ interface TimeMachineProps {
   recordId?: string | null;
 }
 
-const PPT_SLIDES = [
-  { id: 1, timeStart: 0, url: 'https://img-blog.csdnimg.cn/51bfbf73e2c24f30bccfcf8d01670815.png', title: '二叉树的基本定义' },
-  { id: 2, timeStart: 10, url: 'https://img-blog.csdnimg.cn/0e9c866d507641b7a5ccd5229363ed2d.png', title: '前/中/后序遍历算法' },
-  { id: 3, timeStart: 25, url: 'https://img-blog.csdnimg.cn/20191103214403218.JPG?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzQwMDYyODg0,size_16,color_FFFFFF,t_70', title: '递归实现与时空复杂度' },
-  { id: 4, timeStart: 40, url: 'https://tse1.mm.bing.net/th/id/OIP.tm6Cv9qxKuoxE5ULsIYf3wHaDJ?rs=1&pid=ImgDetMain&o=7&rm=3', title: '实战：二叉树深度计算' },
-];
+// 处理图片URL，转换为完整URL
+const getFullImageUrl = (url: string) => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  return `${API_CONFIG.BASE_URL}${url}`;
+};
+
+// 动态生成幻灯片数据
+const getSlides = (imageUrls: string[] | undefined) => {
+  if (!imageUrls || imageUrls.length === 0) {
+    return [];
+  }
+  return imageUrls.map((url, index) => ({
+    id: index + 1,
+    url: getFullImageUrl(url),
+    title: `第${index + 1}张图片`
+  }));
+};
 
 const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [hasAudio, setHasAudio] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1.0);
   const [isRateChanging, setIsRateChanging] = useState(false);
@@ -44,12 +60,19 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
 
   // 音频播放引用
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const timeMarkerRef = useRef<{ openAddModal: () => void } | null>(null);
 
   // AI 面板状态
   const [showAiPanel, setShowAiPanel] = useState(false);
   const INITIAL_PANEL_HEIGHT = 450;
   const [panelHeight, setPanelHeight] = useState(INITIAL_PANEL_HEIGHT);
   const [isDraggingPanel, setIsDraggingPanel] = useState(false);
+
+  // 底部笔记面板状态 (0 = 全屏, 1 = 收起)
+  const [notesPanelExpanded, setNotesPanelExpanded] = useState(true);
+  const [isDraggingNotesPanel, setIsDraggingNotesPanel] = useState(false);
+  const notesPanelDragStartY = useRef(0);
+  const notesPanelStartHeight = useRef(0);
 
   // 时间标记状态 - recordId 为必填，如果没有则显示提示
   const [timeMarks, setTimeMarks] = useState<TimeMark[]>([]);
@@ -85,22 +108,35 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
   // 使用学习记录的时长，如果没有则使用默认值
   const duration = studyRecord?.duration || 50;
 
-  const activeSlideIndex = PPT_SLIDES.reduce((acc, slide, idx) => {
-    return currentTime >= slide.timeStart ? idx : acc;
-  }, 0);
+  // 获取用户上传的真实图片
+  const userImages = studyRecord?.imageUrls || [];
+  const slides = getSlides(userImages);
+  const hasImages = slides.length > 0;
 
-  // 手动切换 PPT
+  // 当前图片索引（基于时间轴或简单索引）
+  const activeSlideIndex = hasImages
+    ? Math.min(
+        Math.floor((currentTime / duration) * slides.length),
+        slides.length - 1
+      )
+    : 0;
+
+  // 手动切换图片
   const goToPrevSlide = () => {
-    if (activeSlideIndex > 0) {
-      handleSeekTo(PPT_SLIDES[activeSlideIndex - 1].timeStart)
+    if (hasImages && activeSlideIndex > 0) {
+      const newIndex = activeSlideIndex - 1;
+      const newTime = (newIndex / slides.length) * duration;
+      handleSeekTo(newTime);
     }
-  }
+  };
 
   const goToNextSlide = () => {
-    if (activeSlideIndex < PPT_SLIDES.length - 1) {
-      handleSeekTo(PPT_SLIDES[activeSlideIndex + 1].timeStart)
+    if (hasImages && activeSlideIndex < slides.length - 1) {
+      const newIndex = activeSlideIndex + 1;
+      const newTime = (newIndex / slides.length) * duration;
+      handleSeekTo(newTime);
     }
-  }
+  };
 
   // 触摸滑动处理
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -138,11 +174,44 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
       if (response.success && response.data) {
         setStudyRecord(response.data);
         // 如果有音频URL，创建音频元素
-        if (response.data.audioUrl) {
-          audioRef.current = new Audio(response.data.audioUrl);
-          audioRef.current.addEventListener('ended', () => {
-            setIsPlaying(false);
+        const audioUrl = response.data.audioUrl;
+        console.log('原始音频URL:', audioUrl);
+        if (audioUrl && audioUrl.trim()) {
+          // 处理音频URL（可能是相对路径或完整URL）
+          const fullAudioUrl = audioUrl.startsWith('http') ? audioUrl : `${API_CONFIG.BASE_URL}${audioUrl}`;
+          console.log('完整音频URL:', fullAudioUrl);
+          const audio = new Audio(fullAudioUrl);
+
+          // 添加加载事件监听
+          audio.addEventListener('canplaythrough', () => {
+            console.log('音频已准备好播放');
           });
+
+          audio.addEventListener('loadedmetadata', () => {
+            console.log('音频元数据加载完成', { duration: audio.duration });
+          });
+
+          // 直接设置hasAudio为true，因为URL有效
+          setHasAudio(true);
+
+          audio.addEventListener('ended', () => {
+            console.log('音频播放结束');
+            setIsPlaying(false);
+            // 播放结束后，时间归零
+            audio.currentTime = 0;
+            setCurrentTime(0);
+          });
+
+          audio.addEventListener('error', (e) => {
+            console.error('音频加载失败:', e, audio.error);
+            setHasAudio(false);
+          });
+
+          audioRef.current = audio;
+          // 尝试预加载
+          audio.load();
+        } else {
+          setHasAudio(false);
         }
       } else {
         setRecordError(response.error || '加载学习记录失败');
@@ -224,24 +293,40 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
 
   // 播放/暂停控制
   const togglePlayPause = () => {
-    if (!audioRef.current) {
+    console.log('点击播放按钮', { hasAudio: !!hasAudio, audioRef: !!audioRef.current, isPlaying });
+    if (!hasAudio || !audioRef.current) {
       // 没有音频文件，使用模拟计时器
+      console.log('使用模拟计时器');
       setIsPlaying(prev => !prev);
       return;
     }
 
+    const audio = audioRef.current;
+
     if (isPlaying) {
-      audioRef.current.pause();
+      audio.pause();
+      setIsPlaying(false);
     } else {
-      audioRef.current.currentTime = currentTime;
-      audioRef.current.play();
+      // 设置当前时间并播放
+      audio.currentTime = currentTime;
+      audio.volume = 1; // 确保音量为最大
+      console.log('开始播放音频', { src: audio.src, currentTime: audio.currentTime, volume: audio.volume });
+      const playPromise = audio.play();
+
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          console.log('播放成功，音频正在播放，paused:', audio.paused);
+          setIsPlaying(true);
+        }).catch((err) => {
+          console.error('播放失败:', err.name, err.message);
+        });
+      }
     }
-    setIsPlaying(prev => !prev);
   };
 
   // 监听音频播放时间更新
   useEffect(() => {
-    if (!audioRef.current) return;
+    if (!audioRef.current || !hasAudio) return;
 
     const audio = audioRef.current;
 
@@ -251,6 +336,9 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
 
     const handleEnded = () => {
       setIsPlaying(false);
+      // 播放结束后，时间归零
+      audio.currentTime = 0;
+      setCurrentTime(0);
     };
 
     audio.addEventListener('timeupdate', handleTimeUpdate);
@@ -260,7 +348,7 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, []);
+  }, [hasAudio]);
 
   // 播放速率变化时更新音频（带平滑过渡）
   useEffect(() => {
@@ -290,32 +378,18 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
 
   // 播放/暂停时音频音量平滑过渡
   useEffect(() => {
-    if (audioRef.current) {
+    if (audioRef.current && hasAudio) {
+      console.log('音量Effect触发', { isPlaying, volume: audioRef.current.volume, paused: audioRef.current.paused });
       if (isPlaying) {
-        // 淡入
-        audioRef.current.volume = 0;
-        audioRef.current.play();
-        const fadeIn = () => {
-          if (audioRef.current && audioRef.current.volume < 1) {
-            audioRef.current.volume = Math.min(1, audioRef.current.volume + 0.1);
-            setTimeout(fadeIn, 50);
-          }
-        };
-        fadeIn();
+        // 淡入：直接设置音量为1 (50%)
+        audioRef.current.volume = 1;
+        console.log('设置音量为1');
       } else {
-        // 淡出
-        const fadeOut = () => {
-          if (audioRef.current && audioRef.current.volume > 0) {
-            audioRef.current.volume = Math.max(0, audioRef.current.volume - 0.1);
-            setTimeout(fadeOut, 50);
-          } else if (audioRef.current) {
-            audioRef.current.pause();
-          }
-        };
-        fadeOut();
+        // 暂停时立即暂停
+        audioRef.current.pause();
       }
     }
-  }, [isPlaying]);
+  }, [isPlaying, hasAudio]);
 
   // 模拟计时器（当没有音频时使用）
   useEffect(() => {
@@ -407,11 +481,54 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
     }, 500);
   };
 
+  // --- 底部笔记面板拖拽逻辑 ---
+  const handleNotesPanelDragStart = (e: React.PointerEvent) => {
+    setIsDraggingNotesPanel(true);
+    notesPanelDragStartY.current = e.clientY;
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+  };
+
+  const handleNotesPanelDragMove = (e: React.PointerEvent) => {
+    if (!isDraggingNotesPanel) return;
+    const deltaY = notesPanelDragStartY.current - e.clientY;
+    const screenHeight = window.innerHeight;
+    const headerHeight = screenHeight * 0.62; // 62% 屏幕高度作为顶部
+    const minHeight = 80; // 最小高度（只显示标题）
+
+    let newHeight = headerHeight + deltaY;
+    if (newHeight < minHeight) newHeight = minHeight;
+    if (newHeight > screenHeight) newHeight = screenHeight;
+
+    // 动态调整顶部区域高度
+    const newTopHeight = screenHeight - newHeight;
+    setNotesPanelHeight(newTopHeight);
+  };
+
+  const handleNotesPanelDragEnd = (e: React.PointerEvent) => {
+    if (!isDraggingNotesPanel) return;
+    setIsDraggingNotesPanel(false);
+    (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+
+    const screenHeight = window.innerHeight;
+    // 吸附逻辑
+    if (notesPanelHeight < screenHeight * 0.3) {
+      // 拖到接近顶部 → 收起底部面板
+      setNotesPanelExpanded(false);
+      setNotesPanelHeight(0);
+    } else {
+      // 否则展开
+      setNotesPanelExpanded(true);
+    }
+  };
+
+  // 状态管理顶部区域高度
+  const [notesPanelHeight, setNotesPanelHeight] = useState(0);
+
   return (
     <div className="flex flex-col h-screen bg-[#0F172A] text-white relative font-sans overflow-hidden">
-        
+
         {/* --- A. 顶部视觉区 --- */}
-        <div className="h-[38%] relative px-4 pt-14 pb-4 flex flex-col">
+        <div className={`relative px-4 pt-14 pb-4 flex flex-col transition-all duration-300 ${notesPanelExpanded ? 'h-[38%]' : 'h-full'}`}>
             <div className="absolute top-4 left-0 right-0 z-30 px-6 flex justify-between items-center">
                 <button onClick={onBack} className="bg-white/10 hover:bg-white/20 p-2 rounded-full backdrop-blur-md border border-white/20">
                     <ArrowLeft size={18} />
@@ -446,22 +563,31 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
             )}
 
             <div
-              className="flex-1 w-full bg-[#1a2e26] rounded-xl border-[6px] border-[#4a3225] shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden flex flex-col touch-pan-y"
+              className="flex-1 w-full bg-[#1a2e26] rounded-xl border-[6px] border-[#4a3225] shadow-[0_20px_50px_rgba(0,0,0,1)] relative overflow-hidden flex flex-col touch-pan-y"
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
             >
                 <div className="absolute top-0 left-0 right-0 h-1 bg-white/5 z-10"></div>
                 <div className="flex-1 w-full relative overflow-hidden">
-                    <div className="flex w-full h-full transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]"
-                         style={{ transform: `translateX(calc(-${activeSlideIndex * 100}% + ${touchDeltaX}px))` }}>
-                        {PPT_SLIDES.map((slide) => (
-                            <div key={slide.id} className="min-w-full h-full relative flex items-center justify-center p-2">
-                                <div className="absolute inset-0 shadow-[inset_0_0_40px_rgba(0,0,0,0.8)] pointer-events-none z-10"></div>
-                                <img src={slide.url} alt={slide.title} className="max-w-full max-h-full object-contain relative z-0" />
+                    {hasImages ? (
+                        <div className="flex w-full h-full transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                            style={{ transform: `translateX(calc(-${activeSlideIndex * 100}% + ${touchDeltaX}px))` }}>
+                            {slides.map((slide) => (
+                                <div key={slide.id} className="min-w-full h-full relative flex items-center justify-center p-2">
+                                    <div className="absolute inset-0 shadow-[inset_0_0_40px_rgba(0,0,0,0.8)] pointer-events-none z-10"></div>
+                                    <img src={slide.url} alt={slide.title} className="max-w-full max-h-full object-contain relative z-0" />
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gray-900">
+                            <div className="text-center">
+                                <Camera size={48} className="text-gray-600 mx-auto mb-2" />
+                                <p className="text-gray-500 font-medium">暂无图片</p>
                             </div>
-                        ))}
-                    </div>
+                        </div>
+                    )}
                 </div>
                 {/* 可交互时间轴 */}
                 <div className="px-2 py-2 bg-[#2a1f18]">
@@ -472,20 +598,21 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
                     onSeek={handleSeekTo}
                   />
                 </div>
-                <div className="absolute bottom-4 left-4 z-20 pointer-events-none">
-                    <div className="bg-emerald-600/90 text-[8px] font-black px-1.5 py-0.5 rounded-sm mb-1 inline-block text-white uppercase tracking-tighter">Current Board</div>
-                    <h2 className="text-base font-black tracking-tight text-white drop-shadow-md line-clamp-1">{PPT_SLIDES[activeSlideIndex].title}</h2>
-                </div>
-                <div className="absolute bottom-4 right-4 z-20 bg-black/50 backdrop-blur-sm px-2 py-0.5 rounded-md text-[9px] font-mono border border-white/10 text-white/80">
-                    P{activeSlideIndex + 1}
-                </div>
+                {hasImages && (
+                    <>
+                        {/* 右上角图片计数器 */}
+                        <div className="absolute top-4 right-4 z-20 bg-black/50 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-mono border border-white/10 text-white/80">
+                            {activeSlideIndex + 1}/{slides.length}
+                        </div>
 
-                {/* 左右滑动提示 */}
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 opacity-50">
-                    <div className="w-6 h-px bg-white/50" />
-                    <span className="text-[8px] text-white/70">滑动切换</span>
-                    <div className="w-6 h-px bg-white/50" />
-                </div>
+                        {/* 左右滑动提示 */}
+                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 opacity-50">
+                            <div className="w-6 h-px bg-white/50" />
+                            <span className="text-[8px] text-white/70">滑动切换</span>
+                            <div className="w-6 h-px bg-white/50" />
+                        </div>
+                    </>
+                )}
             </div>
         </div>
 
@@ -499,28 +626,51 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
                         const waveFactor = isPlaying ? Math.sin(i * 0.4 + currentTime * 3) * 12 : 0;
                         const height = 25 + waveFactor + Math.random() * 8;
                         return (
-                            <div key={i} className={`flex-1 rounded-full transition-all duration-300 ${isPlayed ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'bg-gray-700'}`}
+                            <div key={i} className={`flex-1 rounded-full transition-all duration-300 ${isPlayed ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,1)]' : 'bg-gray-700'}`}
                                  style={{ height: `${height}%` }}></div>
                         );
                     })}
                 </div>
                 <div className="absolute inset-0 z-10">
-                    <div className="absolute left-[2%] top-[-10px] flex flex-col items-center group cursor-pointer" onClick={() => setCurrentTime(0)}>
-                        <div className="bg-purple-500 shadow-lg p-1.5 rounded-full mb-1"><Video size={12} className="text-white" /></div>
-                        <div className="w-[1px] h-12 bg-purple-400/50"></div>
-                    </div>
-                    <div className="absolute left-[20%] top-[-10px] flex flex-col items-center group cursor-pointer" onClick={() => setCurrentTime(10)}>
-                        <div className="bg-blue-500 shadow-lg p-1.5 rounded-full mb-1"><Camera size={12} className="text-white" /></div>
-                        <div className="w-[1px] h-12 bg-blue-400/50"></div>
-                    </div>
-                    <div className="absolute left-[50%] top-[-10px] flex flex-col items-center group cursor-pointer" onClick={() => setCurrentTime(25)}>
-                        <div className="bg-red-500 shadow-lg p-1.5 rounded-full mb-1"><Flag size={12} className="text-white" fill="currentColor" /></div>
-                        <div className="w-[1px] h-12 bg-red-500/50 animate-pulse"></div>
-                    </div>
-                    <div className="absolute left-[80%] top-[-10px] flex flex-col items-center group cursor-pointer" onClick={() => setCurrentTime(40)}>
-                        <div className="bg-yellow-500 shadow-lg p-1.5 rounded-full mb-1"><HelpCircle size={12} className="text-white" /></div>
-                        <div className="w-[1px] h-12 bg-yellow-500/50"></div>
-                    </div>
+                    {timeMarks.map((mark, index) => {
+                      // 计算标记位置百分比（timestamp 是毫秒，需要转换为秒）
+                      const timestampSeconds = (mark.timestamp || 0) / 1000;
+                      const position = duration > 0 ? (timestampSeconds / duration) * 100 : 0;
+                      // 限制在 2% - 98% 之间
+                      const clampedPosition = Math.max(2, Math.min(98, position));
+
+                      // 根据类型选择图标和颜色
+                      const getMarkStyle = () => {
+                        switch (mark.type) {
+                          case 'EMPHASIS':
+                            return { bg: 'bg-red-500', icon: <Flag size={12} className="text-white" fill="currentColor" />, pulse: true };
+                          case 'NOTE':
+                            return { bg: 'bg-blue-500', icon: <Camera size={12} className="text-white" />, pulse: false };
+                          case 'QUESTION':
+                            return { bg: 'bg-yellow-500', icon: <HelpCircle size={12} className="text-white" />, pulse: false };
+                          case 'BOARD_CHANGE':
+                            return { bg: 'bg-purple-500', icon: <Video size={12} className="text-white" />, pulse: false };
+                          default:
+                            return { bg: 'bg-green-500', icon: <Lightbulb size={12} className="text-white" />, pulse: false };
+                        }
+                      };
+
+                      const style = getMarkStyle();
+
+                      return (
+                        <div
+                          key={mark.id || index}
+                          className="absolute top-[-10px] flex flex-col items-center group cursor-pointer"
+                          style={{ left: `${clampedPosition}%` }}
+                          onClick={() => handleSeekTo(timestampSeconds)}
+                        >
+                          <div className={`${style.bg} shadow-lg p-1.5 rounded-full mb-1 ${style.pulse ? 'animate-pulse' : ''}`}>
+                            {style.icon}
+                          </div>
+                          <div className={`w-[1px] h-12 ${style.bg.replace('bg-', 'bg-')}/50`}></div>
+                        </div>
+                      );
+                    })}
                 </div>
              </div>
 
@@ -541,7 +691,7 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
                     <button className="text-gray-400 active:text-white active:scale-90 transition-all p-1" onClick={() => setCurrentTime(Math.min(duration, currentTime + 5))}>
                         <ChevronRight size={28}/>
                     </button>
-                    <button onClick={() => setPlaybackRate(r => r >= 2.0 ? 0.5 : r + 0.5)} className="text-xs font-black text-blue-400 bg-blue-400/10 border border-blue-400/20 rounded-lg px-3 py-1.5 ml-2">
+                    <button onClick={() => setPlaybackRate(r => r >= 2.0 ? 1 : r + 1)} className="text-xs font-black text-blue-400 bg-blue-400/10 border border-blue-400/20 rounded-lg px-3 py-1.5 ml-2">
                         {playbackRate.toFixed(1)}x
                     </button>
                 </div>
@@ -556,81 +706,110 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
              </div>
         </div>
 
-        {/* --- C. 底部内容区 (活页本风格) --- */}
-        <div className="flex-1 bg-[#FCFBF4] text-gray-900 rounded-t-[40px] shadow-[0_-20px_50px_rgba(0,0,0,0.3)] relative z-20 flex flex-col overflow-hidden border-t-2 border-slate-200">
-            <div className="absolute left-10 top-0 bottom-0 w-[1.5px] bg-red-400 opacity-20 z-0"></div>
-            <div className="absolute left-3 top-0 bottom-0 w-4 flex flex-col items-center justify-around py-8 opacity-20 pointer-events-none z-10">
-                {[...Array(10)].map((_, i) => <div key={i} className="w-2.5 h-2.5 rounded-full bg-slate-400 shadow-[inset_1px_1px_2px_rgba(0,0,0,0.2)]"></div>)}
-            </div>
-            <div className="flex px-14 pt-10 pb-4 items-center justify-between relative z-10">
-                <div className="flex flex-col">
-                   <h3 className="text-xl font-black text-slate-900 font-serif italic">课堂笔记回溯</h3>
-                   <div className="w-24 h-1 bg-blue-500/20 mt-1 rounded-full"></div>
-                </div>
-                <div className="flex items-center space-x-3">
-                    {/* 时间标记组件 */}
-                    <TimeMarker
-                        studyRecordId={studyRecordId}
-                        currentTime={currentTime}
-                        timeMarks={timeMarks}
-                        onMarksChange={handleMarksChange}
-                        onSeekTo={handleSeekTo}
-                    />
-                    <div className="bg-slate-200/50 px-3 py-1 rounded-full flex items-center space-x-2 border border-slate-300/30">
-                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Smart-Sync</span>
-                    </div>
-                </div>
+        {/* --- C. 底部内容区 (可拖拽展开/收起的笔记面板) --- */}
+        <div
+            className={`bg-[#FCFBF4] text-gray-900 rounded-t-[40px] shadow-[0_-4px_20px_rgba(0,0,0,0.15),0_-20px_50px_rgba(0,0,0,0.1)] relative z-20 flex flex-col overflow-hidden border-t-2 border-slate-200 transition-all duration-300 ${notesPanelExpanded ? 'flex-1' : 'h-16'}`}
+            style={{
+                height: isDraggingNotesPanel ? undefined : (notesPanelExpanded ? 'auto' : '64px'),
+            }}
+        >
+            {/* 可拖拽顶部区域 */}
+            <div
+                className="w-full cursor-grab active:cursor-grabbing select-none touch-none flex flex-col items-center relative"
+                onPointerDown={handleNotesPanelDragStart}
+                onPointerMove={handleNotesPanelDragMove}
+                onPointerUp={handleNotesPanelDragEnd}
+            >
+                {/* 拖拽指示条 */}
+                <div className="w-12 h-1.5 bg-slate-300 rounded-full mt-3 mb-2"></div>
 
-                {/* 笔记索引展示 */}
-                <div className="mt-3">
-                    <NoteIndex
-                        timeMarks={timeMarks}
-                        currentTime={currentTime}
-                        onSeek={handleSeekTo}
-                    />
-                </div>
+                {/* 标题栏 - 始终显示 */}
+                <div className="flex items-center justify-between w-full px-5 py-2">
+                    <h3 className="text-xl font-black text-slate-900 font-serif italic">课堂笔记回溯</h3>
 
-                {/* 重点标记导航 */}
-                <div className="mt-4 pt-4 border-t border-slate-200">
-                    <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
-                        <Flag size={14} className="text-red-500" />
-                        重点标记导航
-                    </h4>
-                    <EmphasisNavigator
-                        timeMarks={timeMarks}
-                        currentTime={currentTime}
-                        onSeek={handleSeekTo}
-                    />
+                    {/* 蓝色加号 FAB 按钮 - 右上角 */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            // 如果面板收起，先展开
+                            if (!notesPanelExpanded) {
+                                setNotesPanelExpanded(true);
+                            }
+                            // 打开添加标记模态框
+                            timeMarkerRef.current?.openAddModal();
+                        }}
+                        className="w-10 h-10 bg-blue-600 rounded-full shadow-[0_4px_12px_rgba(37,99,235,0.4)] flex items-center justify-center text-white hover:bg-blue-700 active:scale-95 transition-all"
+                    >
+                        <Plus size={20} />
+                    </button>
                 </div>
             </div>
-            <div className="flex-1 overflow-y-auto pl-14 pr-8 pt-2 scrollbar-hide pb-24 relative z-10" ref={scrollRef}>
-                <div className={`mb-8 transition-all duration-500 origin-left cursor-pointer ${currentTime < 2 ? 'opacity-100 scale-105' : 'opacity-20 grayscale'}`} onClick={() => handleSeekTo(0)}>
-                    <div className="flex items-start">
-                        <div className="bg-purple-100 p-2.5 rounded-xl mr-3 shadow-sm border border-purple-200/50"><Video size={18} className="text-purple-600" /></div>
-                        <div className="flex-1">
-                            <h4 className="text-[9px] font-black text-purple-600 uppercase mb-1 tracking-widest bg-purple-50 px-1.5 py-0.5 rounded-sm inline-block">Chapter Opening Video</h4>
-                            <p className="text-lg leading-relaxed font-black text-slate-800 underline decoration-slate-200 decoration-2 underline-offset-4">[视频演示]：二叉树在实际开发中的树状可视化展示。</p>
+
+            {/* 展开时的内容区域 */}
+            {notesPanelExpanded && (
+                <>
+                    {/* 笔记内容 */}
+                    <div className="flex-1 overflow-y-auto px-5 pb-24 relative z-10" ref={scrollRef}>
+                        {/* 活页本装饰线 */}
+                        <div className="absolute left-10 top-0 bottom-0 w-[1.5px] bg-red-400 opacity-20 z-0"></div>
+                        <div className="absolute left-3 top-0 bottom-0 w-4 flex flex-col items-center justify-around py-8 opacity-20 pointer-events-none z-10">
+                            {[...Array(10)].map((_, i) => <div key={i} className="w-2.5 h-2.5 rounded-full bg-slate-400 shadow-[inset_1px_1px_2px_rgba(0,0,0,0.2)]"></div>)}
                         </div>
+
+                        {/* 时间标记与状态 */}
+                        <div className="flex items-center space-x-3 mb-4 relative z-10">
+                            <TimeMarker
+                                ref={timeMarkerRef}
+                                studyRecordId={studyRecordId}
+                                currentTime={currentTime}
+                                timeMarks={timeMarks}
+                                onMarksChange={handleMarksChange}
+                                onSeekTo={handleSeekTo}
+                            />
+                        </div>
+
+                        {/* 笔记索引展示 */}
+                        <div className="mb-4">
+                            <NoteIndex
+                                timeMarks={timeMarks}
+                                currentTime={currentTime}
+                                onSeek={handleSeekTo}
+                            />
+                        </div>
+
+                        {/* 重点标记导航 */}
+                        <div className="mb-4 pt-4 border-t border-slate-200">
+                            <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                                <Flag size={14} className="text-red-500" />
+                                重点标记导航
+                            </h4>
+                            <EmphasisNavigator
+                                timeMarks={timeMarks}
+                                currentTime={currentTime}
+                                onSeek={handleSeekTo}
+                            />
+                        </div>
+
+                        {/* Transcript 内容 */}
+                        {(transcript.length > 0 ? transcript : []).map((seg: any, idx: number) => {
+                            const isActive = currentTime >= seg.time && (idx === transcript.length - 1 || currentTime < transcript[idx+1]?.time);
+                            return (
+                                <div key={idx} onClick={() => handleSeekTo(seg.time)} className={`mb-8 transition-all duration-500 cursor-pointer origin-left ${isActive ? 'opacity-100 scale-105' : 'opacity-20 grayscale'}`}>
+                                    <div className="flex items-start">
+                                        <div className={`mt-2.5 w-1.5 h-1.5 rounded-full mr-5 shrink-0 transition-all ${isActive ? 'bg-blue-600 ring-4 ring-blue-100' : 'bg-gray-300 opacity-50'}`}></div>
+                                        <p className={`text-lg leading-relaxed ${seg.isKeypoint ? 'font-black text-blue-900 bg-yellow-200/40 rounded px-1 -mx-1 border-b-2 border-blue-500/20 shadow-sm' : 'font-medium text-gray-800'}`}>{seg.text}</p>
+                                    </div>
+                                </div>
+                            )
+                        })}
                     </div>
-                </div>
-                {(transcript.length > 0 ? transcript : []).map((seg: any, idx: number) => {
-                    const isActive = currentTime >= seg.time && (idx === transcript.length - 1 || currentTime < transcript[idx+1]?.time);
-                    return (
-                        <div key={idx} onClick={() => handleSeekTo(seg.time)} className={`mb-8 transition-all duration-500 cursor-pointer origin-left ${isActive ? 'opacity-100 scale-105' : 'opacity-20 grayscale'}`}>
-                            <div className="flex items-start">
-                                <div className={`mt-2.5 w-1.5 h-1.5 rounded-full mr-5 shrink-0 transition-all ${isActive ? 'bg-blue-600 ring-4 ring-blue-100' : 'bg-gray-300 opacity-50'}`}></div>
-                                <p className={`text-lg leading-relaxed ${seg.isKeypoint ? 'font-black text-blue-900 bg-yellow-200/40 rounded px-1 -mx-1 border-b-2 border-blue-500/20 shadow-sm' : 'font-medium text-gray-800'}`}>{seg.text}</p>
-                            </div>
-                        </div>
-                    )
-                })}
-            </div>
+                </>
+            )}
 
             {/* AI 难点悬浮灯泡 */}
             {(currentTime >= 25 && currentTime < 35 && !showAiPanel) && (
                 <button onClick={() => setShowAiPanel(true)}
-                        className="absolute right-6 bottom-10 w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-full shadow-[0_15px_40px_rgba(37,99,235,0.5)] flex items-center justify-center animate-bounce z-40 border-4 border-[#FCFBF4] active:scale-90 transition-transform">
+                        className="absolute right-6 bottom-10 w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-full shadow-[0_15px_40px_rgba(37,99,235,1)] flex items-center justify-center animate-bounce z-40 border-4 border-[#FCFBF4] active:scale-90 transition-transform">
                     <Lightbulb className="text-yellow-300 drop-shadow-md" fill="currentColor" size={28} />
                     <div className="absolute inset-[-15px] rounded-full bg-blue-400/10 animate-ping"></div>
                 </button>
@@ -644,7 +823,7 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
                 style={{ 
                   height: `${panelHeight}px`,
                   // 拖拽时取消过渡动画，保证跟随手指不卡顿；非拖拽时保留动画实现点击打开/收起的平滑感
-                  transition: isDraggingPanel ? 'none' : 'height 0.4s cubic-bezier(0.32, 0.72, 0, 1), transform 0.5s cubic-bezier(0.32, 0.72, 0, 1)' 
+                  transition: isDraggingPanel ? 'none' : 'height 0.4s cubic-bezier(0.32, 0.72, 0, 1), transform 1s cubic-bezier(0.32, 0.72, 0, 1)' 
                 }}
             >
                 {/* 

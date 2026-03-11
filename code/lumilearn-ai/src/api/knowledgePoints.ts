@@ -120,6 +120,41 @@ export async function getWeakPoints(
   }
 }
 
+// 错题薄弱点类型定义
+export interface MistakeWeakPoint {
+  id: string
+  name: string
+  status: string
+  masteryScore: number
+  mistakeCount: number
+  chapter: {
+    id: string
+    name: string
+  }
+  course: {
+    id: string
+    name: string
+  }
+}
+
+// 获取错题薄弱点列表（支持按课程筛选）
+export async function getMistakeWeakPoints(
+  courseId?: string
+): Promise<ApiResponse<MistakeWeakPoint[]>> {
+  try {
+    const params: Record<string, unknown> = {}
+    if (courseId) {
+      params.courseId = courseId
+    }
+    return await api.get<MistakeWeakPoint[]>(
+      API_CONFIG.endpoints.mistakeWeakPoints,
+      params
+    )
+  } catch (error) {
+    return { success: false, error: '获取错题薄弱点列表失败' }
+  }
+}
+
 // 获取最近复习的知识点
 export async function getRecentlyReviewed(
   params: Omit<KnowledgePointListParams, 'status'> = {}

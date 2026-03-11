@@ -4,8 +4,9 @@ import { AppView } from '../types';
 import { getStudyRecordList, updateStudyRecord, deleteStudyRecord } from '../src/api/studyRecords';
 import { getChapterList } from '../src/api/chapters';
 import { getKnowledgePointList } from '../src/api/knowledgePoints';
+import { getCourseById } from '../src/api/courses';
 import type { StudyRecord } from '../types';
-import type { Chapter, KnowledgePoint } from '../src/types/api';
+import type { Chapter, KnowledgePoint, Course } from '../types';
 
 interface CourseDetailReviewProps {
   onNavigate: (view: AppView, data?: any) => void;
@@ -125,12 +126,14 @@ const getDistance = (p1: React.PointerEvent, p2: React.PointerEvent) => {
 const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, courseId }) => {
   // --- STATE: Data ---
   const [courseData, setCourseData] = useState<any>(null); // 初始为空，从API获取
+  const [courseName, setCourseName] = useState<string>('课程复习');
   const [editingNode, setEditingNode] = useState<any | null>(null);
 
   // --- API State ---
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [studyRecords, setStudyRecords] = useState<StudyRecord[]>([]);
+  const [knowledgePoints, setKnowledgePoints] = useState<KnowledgePoint[]>([]);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [editingRecord, setEditingRecord] = useState<StudyRecord | null>(null);
   const [notesContent, setNotesContent] = useState('');
@@ -148,9 +151,11 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
         // 构建树形结构
         const chapterData = chaptersRes.data;
         // 获取每个章节的知识点
+        const allKnowledgePoints: KnowledgePoint[] = [];
         const chapterPromises = chapterData.map(async (chapter: Chapter) => {
           const kpRes = await getKnowledgePointList(chapter.id);
           const knowledgePoints = kpRes.success && kpRes.data ? kpRes.data : [];
+          allKnowledgePoints.push(...knowledgePoints);
           return {
             id: chapter.id,
             title: chapter.name,
@@ -170,6 +175,8 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
           title: chaptersRes.data[0]?.courseName || '课程内容',
           children: chaptersWithKps
         });
+        // 保存所有知识点到状态
+        setKnowledgePoints(allKnowledgePoints);
       }
     } catch (err) {
       console.error('Failed to fetch course data:', err);
@@ -207,7 +214,16 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
   useEffect(() => {
     fetchCourseData();
     fetchStudyRecords();
-  }, [fetchCourseData, fetchStudyRecords]);
+
+    // 获取课程详情
+    if (courseId) {
+      getCourseById(courseId).then(response => {
+        if (response.success && response.data) {
+          setCourseName(response.data.name);
+        }
+      });
+    }
+  }, [fetchCourseData, fetchStudyRecords, courseId]);
 
   // --- Update Notes ---
   const handleUpdateNotes = async () => {
@@ -661,8 +677,8 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
                 </button>
                 <div>
                     <h1 className="text-xl font-black text-slate-800 tracking-tight flex items-center">
-                        摄影测量学
-                        <span className="ml-2 bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold tracking-wider">Reviewing</span>
+                        {courseName}
+                        <span className="ml-2 bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold tracking-wider">复习中</span>
                     </h1>
                 </div>
              </div>
@@ -844,113 +860,92 @@ const CourseDetailReview: React.FC<CourseDetailReviewProps> = ({ onNavigate, cou
             </button>
         </div>
 
-        {/* --- TASK BOTTOM SHEET --- */}
+        {/* --- BOTTOM SHEET (与学习页面一致) --- */}
         {!editingNode && (
-            <div 
+            <div
                 className="absolute bottom-0 left-0 right-0 z-40 bg-white rounded-t-[32px] shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.15)] flex flex-col"
-                style={{ 
+                style={{
                     height: sheetHeight,
                     transition: isSheetDragging ? 'none' : 'height 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)'
                 }}
             >
-                <div 
-                    className="w-full pt-4 pb-2 cursor-grab active:cursor-grabbing flex flex-col items-center flex-none bg-white rounded-t-[32px] touch-none"
+                {/* Drag Handle */}
+                <div
+                    className="w-full pt-4 pb-2 flex flex-col items-center flex-none bg-white rounded-t-[32px] border-b border-slate-50 cursor-grab active:cursor-grabbing touch-none"
                     onPointerDown={handleSheetDragStart}
                     onPointerMove={handleSheetDragMove}
                     onPointerUp={handleSheetDragEnd}
                 >
                     <div className="w-12 h-1.5 bg-slate-200 rounded-full mb-3"></div>
-                    <div className="px-6 w-full flex justify-between items-center text-slate-800">
-                        <div className="flex items-center">
-                            <Flame size={16} className="text-orange-500 mr-2" fill="#F97316" />
-                            <h3 className="text-sm font-bold">今日待办 (2)</h3>
-                        </div>
-                        {sheetHeight < 200 && <span className="text-[10px] text-slate-400">Swipe up</span>}
-                    </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-6 pb-6 mt-2">
-                    <div className="space-y-4">
-                        <div className="flex items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 active:bg-blue-50 active:border-blue-100 transition-colors cursor-pointer" onClick={() => onNavigate(AppView.TIME_MACHINE)}>
-                            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 mr-4">
-                                <Target size={20} />
+                <div className="flex-1 overflow-hidden flex">
+                    {/* Left: 学习记录 (与学习页面一致) */}
+                    <div className="w-1/2 h-full overflow-y-auto border-r border-slate-100 px-4 py-4">
+                        <h3 className="text-xs font-bold text-slate-400 mb-4 uppercase tracking-wider pl-2">学习记录</h3>
+                        {studyRecords.length === 0 ? (
+                            <div className="text-center py-8 text-slate-400">
+                                <Clock size={24} className="mx-auto mb-2 opacity-50" />
+                                <p className="text-xs">暂无学习记录</p>
                             </div>
-                            <div className="flex-1">
-                                <h4 className="font-bold text-slate-800 text-sm">重点突破：共线条件方程</h4>
-                                <p className="text-xs text-slate-500">预计 15 分钟 · 关联 3 个考点</p>
+                        ) : (
+                            <div className="relative border-l-2 border-slate-100 ml-2 space-y-4 pb-20">
+                                {studyRecords.slice(0, 5).map((record) => (
+                                    <div
+                                        key={record.id}
+                                        className="relative pl-4 cursor-pointer group transition-all"
+                                    >
+                                        <div className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-emerald-200"></div>
+                                        <div>
+                                            <span className="text-xs font-bold text-emerald-600">
+                                                {new Date(record.recordedAt).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}
+                                            </span>
+                                            <div className="text-sm font-bold text-slate-800 line-clamp-1">{record.title}</div>
+                                            <div className="text-[9px] text-slate-400 mt-0.5">
+                                                {Math.round(record.duration / 60)}分钟
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                            <div className="w-8 h-8 rounded-full bg-white shadow-sm flex items-center justify-center">
-                                <Play size={14} className="text-slate-400 ml-0.5" fill="currentColor"/>
-                            </div>
-                        </div>
+                        )}
+                    </div>
 
-                        <div className="flex items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                            <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 mr-4">
-                                <CheckCircle2 size={20} />
-                            </div>
-                            <div className="flex-1">
-                                <h4 className="font-bold text-slate-800 text-sm">章节测验：第二章</h4>
-                                <p className="text-xs text-slate-500">5 道错题待复习</p>
-                            </div>
+                    {/* Right: 知识点/薄弱点 (简化版) */}
+                    <div className="w-1/2 h-full overflow-y-auto px-4 py-4 bg-slate-50/50">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">知识点</h3>
                         </div>
-
-                        {/* --- STUDY RECORDS SECTION --- */}
-                        <div className="pt-4 border-t border-slate-100">
-                             <h5 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">学习记录</h5>
-                             {studyRecords.length === 0 ? (
-                                 <div className="text-center py-4 text-slate-400">
-                                     <Clock size={20} className="mx-auto mb-2 opacity-50" />
-                                     <p className="text-xs">暂无学习记录</p>
-                                 </div>
-                             ) : (
-                                 <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                                     {studyRecords.slice(0, 5).map((record) => (
-                                         <div
-                                             key={record.id}
-                                             className="bg-white border border-slate-100 p-3 rounded-xl shadow-sm"
-                                         >
-                                             <div className="flex items-start justify-between">
-                                                 <div className="flex-1 min-w-0">
-                                                     <h6 className="text-xs font-bold text-slate-700 truncate">{record.title}</h6>
-                                                     <div className="flex items-center space-x-2 mt-1 text-[10px] text-slate-400">
-                                                         <Clock size={10} />
-                                                         <span>{formatDate(record.recordedAt)}</span>
-                                                         <span>·</span>
-                                                         <span>{formatDuration(record.duration)}</span>
-                                                     </div>
-                                                 </div>
-                                                 <div className="flex space-x-1 ml-2">
-                                                     <button
-                                                         onClick={() => openNotesModal(record)}
-                                                         className="p-1 text-slate-400 hover:text-blue-500"
-                                                         title="编辑笔记"
-                                                     >
-                                                         <FileText size={12} />
-                                                     </button>
-                                                     <button
-                                                         onClick={() => setShowDeleteConfirm(record.id)}
-                                                         className="p-1 text-slate-400 hover:text-red-500"
-                                                         title="删除"
-                                                     >
-                                                         <Trash2 size={12} />
-                                                     </button>
-                                                 </div>
-                                             </div>
-                                             {record.notes && (
-                                                 <p className="text-[10px] text-slate-500 mt-2 line-clamp-2">{record.notes}</p>
-                                             )}
-                                             <button
-                                                 onClick={() => onNavigate(AppView.TIME_MACHINE)}
-                                                 className="mt-2 w-full py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-bold hover:bg-blue-100 flex items-center justify-center"
-                                             >
-                                                 <Play size={10} className="mr-1" />
-                                                 进入时光机
-                                             </button>
-                                         </div>
-                                     ))}
-                                 </div>
-                             )}
-                        </div>
+                        {knowledgePoints.length === 0 ? (
+                            <div className="text-center py-8 text-slate-400">
+                                <p className="text-xs">暂无知识点</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {knowledgePoints.slice(0, 10).map((point) => (
+                                    <div
+                                        key={point.id}
+                                        className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm"
+                                    >
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex-1 min-w-0">
+                                                <h6 className="text-xs font-bold text-slate-700 truncate">{point.name}</h6>
+                                                <div className="flex items-center mt-1">
+                                                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                                                        point.status === 'MASTERED' ? 'bg-green-100 text-green-600' :
+                                                        point.status === 'WEAK' ? 'bg-red-100 text-red-600' :
+                                                        'bg-yellow-100 text-yellow-600'
+                                                    }`}>
+                                                        {point.status === 'MASTERED' ? '已掌握' :
+                                                         point.status === 'WEAK' ? '薄弱' : '学习中'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

@@ -1,11 +1,12 @@
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { HelpCircle, AlertCircle, ChevronRight, PlayCircle, Info, BookOpen, ChevronDown, Check, X, Target, Zap, Clock, MessageSquare, Bot, Search, TrendingUp, Brain, BarChart3, Activity, Loader2 } from 'lucide-react';
+import { HelpCircle, AlertCircle, ChevronRight, PlayCircle, Info, BookOpen, ChevronDown, Check, X, Target, Zap, Clock, MessageSquare, Bot, Search, TrendingUp, Brain, BarChart3, Activity, Loader2, Flame, Calendar, Award, BookMarked, Lightbulb, RefreshCw } from 'lucide-react';
 import { AppView } from '../types';
-import { getKnowledgeMastery } from '../src/api/statistics';
+import { getKnowledgeMastery, getCourseOverview } from '../src/api/statistics';
 import { getCourseList } from '../src/api/courses';
 import { getKnowledgeCorrelation, getLearningSequence, getBottlenecks, generateEvaluation, getLearningEfficiency, getComparisonAnalysis } from '../src/api/analysis';
-import type { KnowledgeMastery, KnowledgeCorrelationResponse, LearningSequenceResponse, BottleneckResponse, LearningEvaluation, LearningEfficiency, ComparisonAnalysis, GenerateEvaluationRequest, Course, Bottleneck } from '../types';
+import { getLearningPath } from '../src/api/recommendations';
+import type { KnowledgeMastery, KnowledgeCorrelationResponse, LearningSequenceResponse, BottleneckResponse, LearningEvaluation, LearningEfficiency, ComparisonAnalysis, GenerateEvaluationRequest, Course, Bottleneck, LearningPath, CourseOverview } from '../types';
 
 interface AnalysisProps {
   onNavigate: (view: AppView) => void;
@@ -18,8 +19,9 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
   const [searchText, setSearchText] = useState('');
   const [activeTab, setActiveTab] = useState<'weak' | 'mastery' | 'correlation' | 'sequence' | 'bottleneck' | 'evaluation' | 'efficiency' | 'compare'>('weak');
 
-  // 本地状态管理当前选中的课程名称，初始化为高等数学或传入的课程
+  // 本地状态管理当前选中的课程名称和ID，初始化为高等数学或传入的课程
   const [selectedCourseName, setSelectedCourseName] = useState("高等数学");
+  const [selectedCourseId, setSelectedCourseId] = useState<string>(currentCourseId || '');
 
   // P4 - Analysis Data State
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -35,12 +37,43 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
   const [courses, setCourses] = useState<Course[]>([]);
   const [coursesLoading, setCoursesLoading] = useState(false);
 
+  // 学习特征和推荐策略状态
+  const [courseOverview, setCourseOverview] = useState<CourseOverview | null>(null);
+  const [learningPath, setLearningPath] = useState<LearningPath | null>(null);
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+
+  // 获取学习特征和推荐策略（按课程获取）
+  const fetchRecommendations = useCallback(async () => {
+    const courseId = selectedCourseId || currentCourseId;
+    if (!courseId) return;
+
+    setRecommendationLoading(true);
+    try {
+      // 获取课程学习概览（学习特征）- 按课程获取
+      const overviewRes = await getCourseOverview(courseId);
+      if (overviewRes.success && overviewRes.data) {
+        setCourseOverview(overviewRes.data);
+      }
+
+      // 获取学习路径（推荐策略）
+      const pathRes = await getLearningPath(courseId);
+      if (pathRes.success && pathRes.data) {
+        setLearningPath(pathRes.data);
+      }
+    } catch (err) {
+      console.error('获取推荐数据失败', err);
+    } finally {
+      setRecommendationLoading(false);
+    }
+  }, [selectedCourseId, currentCourseId]);
+
   // P4 - Fetch Knowledge Mastery
   const fetchKnowledgeMastery = useCallback(async () => {
-    if (!currentCourseId) return;
+    const courseId = selectedCourseId || currentCourseId;
+    if (!courseId) return;
     setAnalysisLoading(true);
     try {
-      const response = await getKnowledgeMastery(currentCourseId);
+      const response = await getKnowledgeMastery(courseId);
       if (response.success && response.data) {
         setKnowledgeMastery(response.data);
       }
@@ -49,14 +82,15 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
     } finally {
       setAnalysisLoading(false);
     }
-  }, [currentCourseId]);
+  }, [selectedCourseId, currentCourseId]);
 
   // P4 - Fetch Knowledge Correlation
   const fetchKnowledgeCorrelation = useCallback(async () => {
-    if (!currentCourseId) return;
+    const courseId = selectedCourseId || currentCourseId;
+    if (!courseId) return;
     setAnalysisLoading(true);
     try {
-      const response = await getKnowledgeCorrelation(currentCourseId);
+      const response = await getKnowledgeCorrelation(courseId);
       if (response.success && response.data) {
         setKnowledgeCorrelation(response.data);
       }
@@ -65,14 +99,15 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
     } finally {
       setAnalysisLoading(false);
     }
-  }, [currentCourseId]);
+  }, [selectedCourseId, currentCourseId]);
 
   // P4 - Fetch Learning Sequence
   const fetchLearningSequence = useCallback(async () => {
-    if (!currentCourseId) return;
+    const courseId = selectedCourseId || currentCourseId;
+    if (!courseId) return;
     setAnalysisLoading(true);
     try {
-      const response = await getLearningSequence(currentCourseId);
+      const response = await getLearningSequence(courseId);
       if (response.success && response.data) {
         setLearningSequence(response.data);
       }
@@ -81,14 +116,15 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
     } finally {
       setAnalysisLoading(false);
     }
-  }, [currentCourseId]);
+  }, [selectedCourseId, currentCourseId]);
 
   // P4 - Fetch Bottlenecks
   const fetchBottlenecks = useCallback(async () => {
-    if (!currentCourseId) return;
+    const courseId = selectedCourseId || currentCourseId;
+    if (!courseId) return;
     setAnalysisLoading(true);
     try {
-      const response = await getBottlenecks(currentCourseId);
+      const response = await getBottlenecks(courseId);
       if (response.success && response.data) {
         setBottlenecks(response.data);
       }
@@ -97,15 +133,16 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
     } finally {
       setAnalysisLoading(false);
     }
-  }, [currentCourseId]);
+  }, [selectedCourseId, currentCourseId]);
 
   // P4 - Generate Evaluation
   const fetchEvaluation = useCallback(async () => {
-    if (!currentCourseId) return;
+    const courseId = selectedCourseId || currentCourseId;
+    if (!courseId) return;
     setAnalysisLoading(true);
     try {
       const params: GenerateEvaluationRequest = {
-        courseId: currentCourseId,
+        courseId: courseId,
         timeRange: 'month',
         includeDetails: true
       };
@@ -118,14 +155,15 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
     } finally {
       setAnalysisLoading(false);
     }
-  }, [currentCourseId]);
+  }, [selectedCourseId, currentCourseId]);
 
   // P4 - Fetch Efficiency
   const fetchEfficiency = useCallback(async () => {
-    if (!currentCourseId) return;
+    const courseId = selectedCourseId || currentCourseId;
+    if (!courseId) return;
     setAnalysisLoading(true);
     try {
-      const response = await getLearningEfficiency(currentCourseId);
+      const response = await getLearningEfficiency(courseId);
       if (response.success && response.data) {
         setEfficiency(response.data);
       }
@@ -134,14 +172,15 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
     } finally {
       setAnalysisLoading(false);
     }
-  }, [currentCourseId]);
+  }, [selectedCourseId, currentCourseId]);
 
   // P4 - Fetch Comparison
   const fetchComparison = useCallback(async () => {
-    if (!currentCourseId) return;
+    const courseId = selectedCourseId || currentCourseId;
+    if (!courseId) return;
     setAnalysisLoading(true);
     try {
-      const response = await getComparisonAnalysis(currentCourseId);
+      const response = await getComparisonAnalysis(courseId);
       if (response.success && response.data) {
         setComparison(response.data);
       }
@@ -150,7 +189,7 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
     } finally {
       setAnalysisLoading(false);
     }
-  }, [currentCourseId]);
+  }, [selectedCourseId, currentCourseId]);
 
   // Tab change handler
   const handleTabChange = (tab: typeof activeTab) => {
@@ -197,6 +236,14 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
           // Set initial course if not provided
           if (!currentCourseId && response.data.length > 0) {
             setSelectedCourseName(response.data[0].name);
+            setSelectedCourseId(response.data[0].id);
+          } else if (currentCourseId) {
+            // 如果有传入的 currentCourseId，找到对应的课程
+            const course = response.data.find(c => c.id === currentCourseId);
+            if (course) {
+              setSelectedCourseName(course.name);
+              setSelectedCourseId(course.id);
+            }
           }
         }
       } catch (err) {
@@ -207,6 +254,17 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
     };
     fetchCourses();
   }, []);
+
+  // 当选中课程变化时，重新获取学习特征和推荐策略数据
+  useEffect(() => {
+    if (selectedCourseId || currentCourseId) {
+      fetchRecommendations();
+      // 如果当前是掌握度标签，也刷新掌握度数据
+      if (activeTab === 'mastery') {
+        fetchKnowledgeMastery();
+      }
+    }
+  }, [selectedCourseId, currentCourseId, fetchRecommendations, activeTab, fetchKnowledgeMastery]);
 
   // 过滤课程列表 - 使用真实的 courses
   const filteredCourses = courses.filter(c =>
@@ -263,9 +321,12 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
           <div className="flex items-center justify-between mb-3 px-1">
             <h2 className="text-sm font-black text-slate-800 flex items-center">
               <span className="w-1.5 h-4 bg-red-500 rounded-full mr-2"></span>
-              待攻克薄弱点 ({weakPoints.length})
+              待攻克薄弱点
             </h2>
-            <div className="flex items-center space-x-1 text-slate-400 active:text-slate-600 transition-colors cursor-pointer group">
+            <div
+              className="flex items-center space-x-1 text-slate-400 active:text-slate-600 transition-colors cursor-pointer group"
+              onClick={() => onNavigate(AppView.WEAK_POINTS, { courseId: selectedCourseId || currentCourseId })}
+            >
               <span className="text-[10px] font-bold group-hover:text-blue-500 transition-colors">查看全部</span>
               <ChevronRight size={12} className="group-hover:text-blue-500 transition-colors" />
             </div>
@@ -302,74 +363,143 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
             <ChevronRight size={14} className="text-slate-300" />
           </div>
 
-          {/* 核心诊断组件 - 高度大幅压缩至 320px */}
+          {/* 核心诊断组件 - 从后端获取真实数据 */}
           <div className="bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden mb-10 flex flex-row h-[320px]">
-            
-            {/* 左侧分栏：知识图谱 */}
-            <div className="w-[55%] border-r border-slate-50 relative p-3 bg-slate-50/20 flex flex-col">
-              <h4 className="text-[9px] font-black text-slate-400 mb-1 uppercase tracking-tighter">知识联络图谱</h4>
-              <div className="flex-1 relative">
-                <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-20" viewBox="0 0 160 220" preserveAspectRatio="xMidYMid meet">
-                  <line x1="80" y1="110" x2="40" y2="60" stroke="#EF4444" strokeWidth="1.5" strokeDasharray="3 3" />
-                  <line x1="80" y1="110" x2="120" y2="60" stroke="#EF4444" strokeWidth="1.5" strokeDasharray="3 3" />
-                  <line x1="80" y1="110" x2="80" y2="30" stroke="#EF4444" strokeWidth="1.5" />
-                  <line x1="80" y1="110" x2="30" y2="170" stroke="#3B82F6" strokeWidth="1.2" />
-                  <line x1="80" y1="110" x2="130" y2="170" stroke="#3B82F6" strokeWidth="1.2" />
-                </svg>
-                <div className="absolute inset-0">
-                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 bg-red-500 text-white rounded-full text-[9px] font-black shadow-lg ring-2 ring-red-100 z-10 whitespace-nowrap">
-                    函数极限
+
+            {/* 左侧分栏：学习特征 */}
+            <div className="w-[55%] border-r border-slate-50 relative p-3 bg-gradient-to-br from-blue-50 to-indigo-50 flex flex-col">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-[9px] font-black text-slate-500 uppercase tracking-tighter flex items-center gap-1">
+                  <Brain size={10} className="text-blue-500" />
+                  学习特征
+                </h4>
+                {recommendationLoading && <Loader2 size={10} className="text-blue-500 animate-spin" />}
+              </div>
+
+              {courseOverview ? (
+                <div className="flex-1 flex flex-col justify-center space-y-3">
+                  {/* 学习时长 */}
+                  <div className="bg-white/80 rounded-xl p-3 border border-blue-100/50">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Clock size={12} className="text-purple-500" />
+                      <span className="text-[10px] font-bold text-slate-500">学习时长</span>
+                    </div>
+                    <p className="text-lg font-black text-slate-800">
+                      {Math.round(courseOverview.totalStudyTime / 3600)}h
+                      <span className="text-xs font-normal text-slate-400 ml-1">
+                        {courseOverview.studyDays}天
+                      </span>
+                    </p>
                   </div>
-                  <div className="absolute left-[2%] top-[20%] px-1.5 py-0.5 bg-white border border-red-200 text-red-500 rounded-md text-[8px] font-bold shadow-sm">左极限</div>
-                  <div className="absolute right-[2%] top-[20%] px-1.5 py-0.5 bg-white border border-red-200 text-red-500 rounded-md text-[8px] font-bold shadow-sm">右极限</div>
-                  <div className="absolute left-[25%] top-[5%] px-1.5 py-0.5 bg-white border border-red-300 text-red-600 rounded-md text-[8px] font-black shadow-md">无穷小量</div>
-                  <div className="absolute left-[0%] bottom-[15%] px-1.5 py-0.5 bg-white border border-blue-200 text-blue-500 rounded-md text-[8px] font-bold shadow-sm">连续性</div>
-                  <div className="absolute right-[0%] bottom-[15%] px-1.5 py-0.5 bg-white border border-blue-200 text-blue-500 rounded-md text-[8px] font-bold shadow-sm">间断点</div>
+
+                  {/* 知识点统计 */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white/80 rounded-xl p-2.5 border border-green-100/50">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Award size={10} className="text-green-500" />
+                        <span className="text-[9px] font-bold text-slate-500">已掌握</span>
+                      </div>
+                      <p className="text-lg font-black text-green-600">
+                        {courseOverview.masteredCount}
+                      </p>
+                    </div>
+                    <div className="bg-white/80 rounded-xl p-2.5 border border-red-100/50">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <AlertCircle size={10} className="text-red-500" />
+                        <span className="text-[9px] font-bold text-slate-500">薄弱点</span>
+                      </div>
+                      <p className="text-lg font-black text-red-500">
+                        {courseOverview.weakCount}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 掌握度 */}
+                  <div className="bg-white/80 rounded-xl p-2.5 border border-blue-100/50">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[9px] font-bold text-slate-500">平均掌握度</span>
+                      <span className="text-sm font-black text-blue-600">{courseOverview.averageMasteryScore}%</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full"
+                        style={{ width: `${courseOverview.averageMasteryScore}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
-              {/* 图例改为水平排列以节省垂直空间 */}
-              <div className="mt-0 flex flex-row space-x-3 items-center">
-                 <div className="flex items-center space-x-1"><div className="w-1.5 h-1.5 rounded-full bg-red-500"></div><span className="text-[8px] font-bold text-slate-400">待强化</span></div>
-                 <div className="flex items-center space-x-1"><div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div><span className="text-[8px] font-bold text-slate-400">已掌握</span></div>
-              </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-slate-400">
+                  <div className="text-center">
+                    <Brain size={24} className="mx-auto mb-2 opacity-30" />
+                    <p className="text-[10px]">暂无学习数据</p>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* 右侧分栏：特征与策略 - 压缩间距 */}
+            {/* 右侧分栏：推荐策略 */}
             <div className="w-[45%] p-3 flex flex-col overflow-y-auto scrollbar-hide bg-white">
-              <div className="mb-4">
-                <div className="flex items-center space-x-1.5 mb-2">
-                   <Target size={12} className="text-blue-500" />
-                   <h4 className="text-[9px] font-black text-slate-800 uppercase tracking-tighter">学习特征</h4>
-                </div>
-                <div className="space-y-1.5">
-                  {[
-                    { label: "深夜专注", icon: Clock, color: "text-purple-500", bg: "bg-purple-50" },
-                    { label: "概念死磕", icon: Info, color: "text-blue-500", bg: "bg-blue-50" }
-                  ].map((item, i) => (
-                    <div key={i} className="flex items-center space-x-2 p-1.5 rounded-lg bg-slate-50/50 border border-slate-100">
-                      <div className={`p-1 rounded-md ${item.bg} ${item.color}`}><item.icon size={12} /></div>
-                      <span className="text-[10px] font-black text-slate-700 truncate">{item.label}</span>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-[9px] font-black text-slate-800 uppercase tracking-tighter flex items-center gap-1">
+                  <Lightbulb size={10} className="text-orange-500" />
+                  推荐策略
+                </h4>
+              </div>
+
+              {learningPath && learningPath.recommendedPath ? (
+                <div className="space-y-2">
+                  {/* 学习策略概述 */}
+                  {learningPath.learningStrategy && (
+                    <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-lg p-2 border border-orange-100 mb-2">
+                      <p className="text-[9px] text-orange-700 leading-relaxed">
+                        {learningPath.learningStrategy.description}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 推荐学习路径 */}
+                  <div className="text-[9px] font-bold text-slate-500 mb-1">
+                    今日推荐 ({learningPath.recommendedPath.slice(0, 3).length}项)
+                  </div>
+
+                  {learningPath.recommendedPath.slice(0, 3).map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 border border-slate-100 active:scale-95 transition-transform cursor-pointer"
+                      onClick={() => onNavigate(AppView.DRILL)}
+                    >
+                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-black ${
+                        item.priority === 'high'
+                          ? 'bg-red-100 text-red-600'
+                          : item.priority === 'medium'
+                          ? 'bg-orange-100 text-orange-600'
+                          : 'bg-blue-100 text-blue-600'
+                      }`}>
+                        {item.order}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-bold text-slate-700 truncate">{item.name}</p>
+                        <p className="text-[8px] text-slate-400 truncate">{item.reason}</p>
+                      </div>
+                      <ChevronRight size={12} className="text-slate-300" />
                     </div>
                   ))}
+
+                  {/* 预估时间 */}
+                  <div className="flex items-center justify-between text-[9px] text-slate-500 pt-1 border-t border-slate-100">
+                    <span>预计学习时间</span>
+                    <span className="font-bold">{Math.round(learningPath.estimatedTotalTime / 60)}分钟</span>
+                  </div>
                 </div>
-              </div>
-              <div>
-                <div className="flex items-center space-x-1.5 mb-2">
-                   <Zap size={12} className="text-orange-500" />
-                   <h4 className="text-[9px] font-black text-slate-800 uppercase tracking-tighter">推荐策略</h4>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-slate-400">
+                  <div className="text-center">
+                    <Lightbulb size={24} className="mx-auto mb-2 opacity-30" />
+                    <p className="text-[10px]">暂无推荐策略</p>
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  {[
-                    { title: "补丁课", icon: PlayCircle, color: "text-blue-500" },
-                    { title: "降难练", icon: Zap, color: "text-orange-500" }
-                  ].map((action, i) => (
-                    <div key={i} className="flex items-center space-x-2 p-2 rounded-lg bg-white border border-slate-100 shadow-sm active:scale-95 transition-transform cursor-pointer">
-                      <action.icon size={14} className={action.color} />
-                      <span className="text-[10px] font-black text-slate-700">{action.title}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -663,6 +793,7 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
                             key={course.id}
                             onClick={() => {
                                 setSelectedCourseName(course.name);
+                                setSelectedCourseId(course.id);
                                 setShowPicker(false);
                             }}
                             className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all active:scale-98 ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-slate-100 bg-white hover:border-blue-200'}`}

@@ -55,9 +55,23 @@ router.get('/', [
       }
     })
 
+    // 解析每个记录的 imageUrls
+    const formattedRecords = studyRecords.map(record => {
+      let imageUrls: string[] = []
+      try {
+        imageUrls = JSON.parse(record.imageUrls || '[]')
+      } catch (e) {
+        imageUrls = []
+      }
+      return {
+        ...record,
+        imageUrls
+      }
+    })
+
     res.json({
       success: true,
-      data: studyRecords
+      data: formattedRecords
     } as ApiResponse<StudyRecord[]>)
   } catch (error: any) {
     console.error('Error fetching study records:', error)
@@ -194,9 +208,20 @@ router.get('/:id', [
       } as ApiResponse<undefined>)
     }
 
+    // 解析 imageUrls JSON 字符串为数组
+    let imageUrls: string[] = []
+    try {
+      imageUrls = JSON.parse(studyRecord.imageUrls || '[]')
+    } catch (e) {
+      imageUrls = []
+    }
+
     res.json({
       success: true,
-      data: studyRecord
+      data: {
+        ...studyRecord,
+        imageUrls
+      }
     } as ApiResponse<StudyRecord>)
   } catch (error: any) {
     console.error('Error fetching study record:', error)
@@ -214,14 +239,15 @@ router.post('/', [
   body('chapterId').isUUID().withMessage('Valid chapterId is required'),
   body('title').trim().notEmpty().withMessage('Title is required'),
   body('date').isISO8601().withMessage('Valid date is required'),
-  body('audioUrl').trim().notEmpty().withMessage('Valid audioUrl is required'),
+  body('audioUrl').optional().trim(),
   body('duration').isInt({ min: 0 }).withMessage('Duration must be a non-negative integer'),
   body('status').optional().isIn(['RECORDING', 'PROCESSING', 'COMPLETED', 'FAILED']),
   body('notes').optional().isString(),
+  body('imageUrls').optional().isArray().withMessage('imageUrls must be an array'),
   validate
 ], async (req: Request, res: Response) => {
   try {
-    const { courseId, chapterId, title, date, audioUrl, duration, status = 'RECORDING', notes = '' }: CreateStudyRecordRequest = req.body
+    const { courseId, chapterId, title, date, audioUrl, duration, status = 'RECORDING', notes = '', imageUrls } = req.body
 
     // 验证课程是否存在
     const course = await prisma.course.findUnique({
@@ -247,6 +273,9 @@ router.post('/', [
       } as ApiResponse<undefined>)
     }
 
+    // 将 imageUrls 数组转为 JSON 字符串存储
+    const imageUrlsJson = imageUrls ? JSON.stringify(imageUrls) : '[]'
+
     // 创建学习记录
     const studyRecord = await prisma.studyRecord.create({
       data: {
@@ -254,10 +283,11 @@ router.post('/', [
         chapterId,
         title,
         date: new Date(date),
-        audioUrl,
+        audioUrl: audioUrl || '',
         duration,
         status,
-        notes
+        notes,
+        imageUrls: imageUrlsJson
       },
       include: {
         course: {

@@ -96,6 +96,14 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  // 显示成功消息并2秒后自动清除
+  const showSuccess = (message: string) => {
+    setSuccess(message);
+    setTimeout(() => {
+      setSuccess(null);
+    }, 2000);
+  };
+
   // Save State
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const [recordTitle, setRecordTitle] = useState('');
@@ -135,7 +143,7 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       const response = await uploadAudio(file);
       if (response.success && response.data) {
         setRecordedAudioUrl(response.data.url);
-        setSuccess('音频上传成功！');
+        showSuccess('音频上传成功！');
       } else {
         setError(response.error || '上传失败');
       }
@@ -203,7 +211,7 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       if (newImages.length > 0) {
         setUploadedImages(prev => [...prev, ...newImages]);
         setImageCount(prev => prev + newImages.length);
-        setSuccess(`成功上传 ${newImages.length} 张图片`);
+        showSuccess(`成功上传 ${newImages.length} 张图片`);
       }
     } catch (err) {
       setError('图片上传失败，请重试');
@@ -277,7 +285,7 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
           url: response.data.url,
           originalName: response.data.originalName
         });
-        setSuccess('文档上传成功！');
+        showSuccess('文档上传成功！');
       } else {
         setError(response.error || '上传失败');
       }
@@ -334,15 +342,21 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       // 如果有本地录制的音频，先上传
       let audioUrl = recordedAudioUrl;
       if (recordedAudioUrl && recordedAudioUrl.startsWith('blob:')) {
-        // 将blob URL转换为File并上传
+        // 将blob URL转换为File并上传，使用blob的实际类型
         const response = await fetch(recordedAudioUrl);
         const blob = await response.blob();
-        const file = new File([blob], 'recording.webm', { type: 'audio/webm' });
+        // 从blob类型推断文件扩展名
+        const extension = blob.type.includes('mp4') ? 'm4a' : 'webm';
+        const file = new File([blob], `recording.${extension}`, { type: blob.type });
+        console.log('上传音频文件类型:', blob.type);
         const uploadRes = await uploadAudio(file);
         if (uploadRes.success && uploadRes.data) {
           audioUrl = uploadRes.data.url;
         }
       }
+
+      // 获取上传的图片URL列表
+      const imageUrls = uploadedImages.map(img => img.url);
 
       const response = await createStudyRecord({
         courseId: selectedCourseId,
@@ -353,10 +367,11 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
         notes: noteText || undefined,
         duration: duration,
         status: audioUrl ? 'COMPLETED' : 'RECORDING',
+        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
       });
 
       if (response.success) {
-        setSuccess('学习记录保存成功！');
+        showSuccess('学习记录保存成功！');
         setShowSaveConfirm(false);
         // Reset form
         setRecordTitle('');
@@ -382,28 +397,59 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
   // Start Recording
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      // 先创建一个 audio 元素来实时播放麦克风声音，以便调试
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false
+      });
+
+      console.log('麦克风获取成功', stream.getAudioTracks()[0].getSettings());
+
+      // 创建一个 audio 元素实时播放麦克风输入，用于调试
+      const audioElement = new Audio();
+      audioElement.srcObject = stream;
+      audioElement.autoplay = true;
+      audioElement.volume = 1;
+      console.log('实时播放元素已创建，请听是否有声音');
+
+      // 优先使用兼容性好的格式
+      let mimeType = 'audio/webm;codecs=opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'audio/webm';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = '';
+        }
+      }
+      console.log('使用的MIME类型:', mimeType || '浏览器默认');
+
+      const options = mimeType ? { mimeType } : undefined;
+      const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
       mediaRecorder.ondataavailable = (e) => {
+        console.log('收到音频数据块:', e.data.size, 'bytes');
         if (e.data.size > 0) {
           chunksRef.current.push(e.data);
         }
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        // 停止实时播放
+        audioElement.srcObject = null;
+
+        const blob = new Blob(chunksRef.current, { type: mimeType || 'audio/webm' });
+        console.log('录音完成，Blob大小:', blob.size, 'bytes');
         const url = URL.createObjectURL(blob);
         setRecordedAudioUrl(url);
         stream.getTracks().forEach(track => track.stop());
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(100);
       setIsRecording(true);
       setDuration(0);
     } catch (err) {
+      console.error('录音失败:', err);
       setError('无法访问麦克风，请检查权限');
     }
   };
@@ -542,6 +588,12 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
                           {recordedAudioUrl && <p className="text-green-600">已录制音频</p>}
                           {noteText && <p>笔记字数：{noteText.length}</p>}
                       </div>
+                      {/* 录音预览 */}
+                      {recordedAudioUrl && (
+                        <div className="mt-3">
+                          <audio controls src={recordedAudioUrl} className="w-full h-8" />
+                        </div>
+                      )}
                   </div>
                   <div className="flex space-x-3 mt-5">
                       <button
@@ -821,8 +873,11 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
                  <div className="flex-1 overflow-y-auto scrollbar-hide space-y-2.5 pb-6">
                      {/* 如果当前课程不在列表中且有值，作为一个选项显示 */}
                      {courseName && !filteredCourses.find(c => c.name === courseName) && !searchText && (
-                         <button 
-                            onClick={() => setShowPicker(false)}
+                         <button
+                            onClick={() => {
+                                setSelectedCourseId(''); // 清空课程ID，表示自定义课程
+                                setShowPicker(false);
+                            }}
                             className="w-full flex items-center justify-between p-4 rounded-2xl border-2 border-blue-500 bg-blue-50 transition-all"
                          >
                              <div className="flex flex-col items-start">
@@ -839,6 +894,7 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
                             <button 
                                 key={course.id}
                                 onClick={() => {
+                                    setSelectedCourseId(course.id);
                                     setCourseName(course.name);
                                     setShowPicker(false);
                                 }}
@@ -855,9 +911,10 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
                      
                      {/* 如果没有匹配结果或想添加自定义 */}
                      {searchText && !filteredCourses.find(c => c.name === searchText) && (
-                         <button 
+                         <button
                             onClick={() => {
                                setCourseName(searchText);
+                               setSelectedCourseId(''); // 清空课程ID，表示自定义课程
                                setShowPicker(false);
                             }}
                             className="w-full flex items-center justify-center p-4 rounded-2xl border-2 border-dashed border-slate-300 text-slate-400 hover:border-blue-400 hover:text-blue-500 transition-colors active:scale-95"

@@ -183,12 +183,12 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
     const link = g.append('g')
       .selectAll<SVGLineElement, GraphLink>('line')
       .data(links)
-      .join('line') as any
+      .join('line')
       .attr('stroke', '#cbd5e1')
       .attr('stroke-width', 2)
-      .attr('stroke-dasharray', (d: GraphLink) => d.relationType === 'RELATED' ? '5,5' : 'none')
+      .attr('stroke-dasharray', (d) => d.relationType === 'RELATED' ? '5,5' : 'none')
       .style('cursor', 'pointer')
-      .on('mouseenter', function(event, d: GraphLink) {
+      .on('mouseenter', function(event, d) {
         d3.select(this).attr('stroke', '#0ea5e9').attr('stroke-width', 3)
         setHoveredLink(d)
       })
@@ -201,11 +201,11 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
     const linkLabels = g.append('g')
       .selectAll<SVGTextElement, GraphLink>('text')
       .data(links)
-      .join('text') as any
+      .join('text')
       .attr('font-size', 10)
       .attr('fill', '#64748b')
       .attr('text-anchor', 'middle')
-      .text((d: GraphLink) => getRelationTypeLabel(d.relationType))
+      .text((d) => getRelationTypeLabel(d.relationType))
       .style('opacity', 0)
       .style('pointer-events', 'none')
 
@@ -213,13 +213,13 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
     const node = g.append('g')
       .selectAll<SVGGElement, GraphNode>('g')
       .data(nodes)
-      .join('g') as any
+      .join('g')
       .style('cursor', 'pointer')
       .call(d3.drag<SVGGElement, GraphNode>()
         .on('start', dragstarted)
         .on('drag', dragged)
         .on('end', dragended))
-      .on('click', (event, d: GraphNode) => {
+      .on('click', (event, d) => {
         setSelectedNode(d)
         onNodeClick?.(d.id, d.name)
       })

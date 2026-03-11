@@ -32,3 +32,45 @@ export async function getCourseById(id: string): Promise<ApiResponse<Course>> {
     return { success: false, error: '获取课程详情失败' }
   }
 }
+
+// 创建课程
+export async function createCourse(data: {
+  name: string
+  description?: string
+  semester?: string
+  type?: 'PROFESSIONAL' | 'ELECTIVE' | 'PUBLIC'
+  status?: 'STUDYING' | 'REVIEWING' | 'ARCHIVED'
+}): Promise<ApiResponse<Course>> {
+  try {
+    return await api.post<Course>(API_CONFIG.endpoints.courses, data)
+  } catch (error) {
+    return { success: false, error: '创建课程失败' }
+  }
+}
+
+// 更新课程
+export async function updateCourse(
+  id: string,
+  data: {
+    name?: string
+    description?: string
+    semester?: string
+    type?: 'PROFESSIONAL' | 'ELECTIVE' | 'PUBLIC'
+    status?: 'STUDYING' | 'REVIEWING' | 'ARCHIVED'
+  }
+): Promise<ApiResponse<Course>> {
+  try {
+    return await api.put<Course>(`${API_CONFIG.endpoints.courses}/${id}`, data)
+  } catch (error) {
+    return { success: false, error: '更新课程失败' }
+  }
+}
+
+// 删除课程
+export async function deleteCourse(id: string): Promise<ApiResponse<void>> {
+  try {
+    return await api.delete<void>(`${API_CONFIG.endpoints.courses}/${id}`)
+  } catch (error) {
+    return { success: false, error: '删除课程失败' }
+  }
+}

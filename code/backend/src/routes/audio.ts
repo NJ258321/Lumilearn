@@ -6,6 +6,7 @@ import fs from 'fs'
 import path from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import OpenAI from 'openai'
 
 const execAsync = promisify(exec)
 const router = Router()
@@ -122,8 +123,8 @@ router.get('/:id/metadata', async (req: Request, res: Response) => {
 
 /**
  * P2.2: POST /api/audio/:id/transcribe
- * 音频转写接口（预留框架）
- * 后续可集成阿里云语音识别、讯飞语音识别等
+ * 音频转写接口 - 使用 OpenAI Whisper
+ * 每月3小时免费额度，支持中文
  */
 router.post('/:id/transcribe', async (req: Request, res: Response) => {
   try {
@@ -163,30 +164,79 @@ router.post('/:id/transcribe', async (req: Request, res: Response) => {
       } as ApiResponse<undefined>)
     }
 
-    // TODO: 集成外部语音识别服务
-    // 预留框架，当前返回提示信息
+    // 检查 OpenAI API Key
+    const openaiApiKey = process.env.OPENAI_API_KEY
+    if (!openaiApiKey || openaiApiKey === 'sk-your-openai-api-key-here') {
+      return res.status(400).json({
+        success: false,
+        error: '请在 .env 文件中配置 OPENAI_API_KEY',
+        code: 'API_KEY_NOT_CONFIGURED'
+      } as ApiResponse<undefined>)
+    }
 
-    // 示例：预留的转写响应格式
-    // 后续集成时替换为实际调用
+    // 使用 Whisper 进行转写
+    const openai = new OpenAI({
+      apiKey: openaiApiKey
+    })
+
+    // 读取音频文件
+    const audioFile = fs.createReadStream(filePath)
+
+    // 调用 Whisper API 进行转写
+    const transcription = await openai.audio.transcriptions.create({
+      file: audioFile,
+      model: 'whisper-1',
+      language: language === 'zh-CN' ? 'zh' : language,
+      response_format: 'verbose_json',
+      timestamp_granularities: ['segment']
+    })
+
+    // 处理返回结果
+    const segments = 'segments' in transcription ? transcription.segments : []
+
+    // 保存转写结果到数据库
+    const transcriptionText = 'text' in transcription ? transcription.text : ''
+
+    // 更新学习记录的转写结果（如果需要存储的话）
+    // 这里我们直接返回转写结果
+
     res.json({
       success: true,
       data: {
         studyRecordId: id,
-        status: 'PENDING',
-        message: '转写服务预留框架已就绪，请配置语音识别服务',
+        status: 'COMPLETED',
+        message: '转写成功',
         language,
-        // 预留字段
-        text: null,
-        segments: [],
-        providers: [
-          { name: '阿里云语音识别', status: 'not_configured' },
-          { name: '讯飞语音识别', status: 'not_configured' },
-          { name: 'Google Speech-to-Text', status: 'not_configured' }
-        ]
+        text: transcriptionText,
+        segments: segments.map((seg: any) => ({
+          id: seg.id,
+          start: seg.start,
+          end: seg.end,
+          text: seg.text
+        })),
+        provider: 'OpenAI Whisper'
       }
     } as ApiResponse<any>)
   } catch (error: any) {
     console.error('Error transcribing audio:', error)
+
+    // 处理 API 错误
+    if (error.status === 401 || error.message?.includes('API key')) {
+      return res.status(400).json({
+        success: false,
+        error: 'API Key 无效或已过期，请检查配置',
+        code: 'INVALID_API_KEY'
+      } as ApiResponse<undefined>)
+    }
+
+    if (error.message?.includes('insufficient_quota')) {
+      return res.status(400).json({
+        success: false,
+        error: 'API 配额已用完，请检查 OpenAI 账户余额',
+        code: 'QUOTA_EXCEEDED'
+      } as ApiResponse<undefined>)
+    }
+
     res.status(500).json({
       success: false,
       error: error.message || '音频转写失败',

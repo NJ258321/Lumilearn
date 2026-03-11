@@ -189,6 +189,10 @@ export enum AppView {
   MISTAKES = 'MISTAKES',
   // 备考日历
   EXAM_CALENDAR = 'EXAM_CALENDAR',
+  // 薄弱点详情
+  WEAK_POINTS = 'WEAK_POINTS',
+  // 课程管理
+  COURSE_MANAGER = 'COURSE_MANAGER',
 }
 
 export interface Task {

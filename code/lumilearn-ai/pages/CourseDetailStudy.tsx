@@ -1,13 +1,17 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
-import { ArrowLeft, Edit3, Trash2, Calendar, MapPin, CheckCircle2, RotateCcw, Zap, Mic, Plus, Lock, MoreHorizontal, BookOpen, FileText, Settings, Minus, ChevronRight, Loader2, AlertCircle, X, Filter, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Edit3, Trash2, Calendar, MapPin, CheckCircle2, RotateCcw, Zap, Mic, Plus, Lock, MoreHorizontal, BookOpen, FileText, Settings, Minus, ChevronRight, Loader2, AlertCircle, X, Filter, AlertTriangle, Clock, FileText as FileTextIcon } from 'lucide-react';
 import { AppView } from '../types';
 import { getChapterList, createChapter, updateChapter, deleteChapter } from '../src/api/chapters';
 import { getKnowledgePointList, createKnowledgePoint, updateKnowledgePoint, deleteKnowledgePoint, updateMastery, getWeakPoints, batchCreateKnowledgePoints, batchUpdateStatus } from '../src/api/knowledgePoints';
-import type { Chapter, KnowledgePoint } from '../types';
+import { getCourseById } from '../src/api/courses';
+import { getStudyRecordList } from '../src/api/studyRecords';
+import { getKnowledgeMastery } from '../src/api/statistics';
+import type { Chapter, KnowledgePoint, Course, StudyRecord, KnowledgeMastery } from '../types';
 
 interface CourseDetailStudyProps {
   onNavigate: (view: AppView, data?: any) => void;
   courseId?: string | null;
+  studyMode?: 'study' | 'review';
 }
 
 // --- 1. DATA STRUCTURE: REMOTE SENSING ---
@@ -148,9 +152,11 @@ const getDistance = (p1: React.PointerEvent, p2: React.PointerEvent) => {
     return Math.sqrt(Math.pow(p2.clientX - p1.clientX, 2) + Math.pow(p2.clientY - p1.clientY, 2));
 };
 
-const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate, courseId }) => {
+const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate, courseId, studyMode = 'study' }) => {
   // --- STATE ---
   const [courseData, setCourseData] = useState(INITIAL_DATA);
+  const [courseName, setCourseName] = useState<string>('');
+  const [courseInfo, setCourseInfo] = useState<Course | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
 
   // API State
@@ -176,19 +182,46 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate, cours
   const [showKnowledgeModal, setShowKnowledgeModal] = useState(false);
   const [showKnowledgeDeleteConfirm, setShowKnowledgeDeleteConfirm] = useState<string | null>(null);
 
+  // Study Records State
+  const [studyRecords, setStudyRecords] = useState<StudyRecord[]>([]);
+
   // Fetch Knowledge Points
   // 获取知识点列表（按章节筛选）
+  // 获取当前课程的知识点
   const fetchKnowledgePoints = useCallback(async (chapterId?: string) => {
     setLoading(true);
     try {
-      let response;
-      if (showWeakPointsOnly) {
-        response = await getWeakPoints({ chapterId });
+      // 如果有 courseId，使用课程知识点 API 获取当前课程的知识点
+      if (courseId) {
+        const masteryResponse = await getKnowledgeMastery(courseId);
+        if (masteryResponse.success && masteryResponse.data) {
+          // 将 KnowledgeMastery 的 points 转换为 KnowledgePoint 格式
+          const masteryPoints = masteryResponse.data.points || [];
+          const formattedPoints = masteryPoints.map((p) => ({
+            id: p.id,
+            name: p.name,
+            status: p.status as KnowledgePoint['status'],
+            courseId: courseId,
+            createdAt: '',
+            updatedAt: '',
+          }));
+          setKnowledgePoints(formattedPoints);
+        }
       } else {
-        response = await getKnowledgePointList({ chapterId });
-      }
-      if (response.success && response.data) {
-        setKnowledgePoints(response.data);
+        // 如果没有 courseId，按原来的方式获取
+        let response;
+        const params: { chapterId?: string } = {};
+        if (chapterId) {
+          params.chapterId = chapterId;
+        }
+        if (showWeakPointsOnly) {
+          response = await getWeakPoints(params);
+        } else {
+          response = await getKnowledgePointList(params);
+        }
+        if (response.success && response.data) {
+          setKnowledgePoints(response.data);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch knowledge points:', err);
@@ -392,11 +425,13 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate, cours
     if (!formData.name.trim() || !courseId) return;
     setLoading(true);
     try {
+      // 计算新章节的order：取当前最大order + 1
+      const maxOrder = chapters.reduce((max, ch) => Math.max(max, ch.order || 0), 0);
       const response = await createChapter({
         courseId: courseId,
         name: formData.name,
         description: formData.description,
-        order: chapters.length + 1,
+        order: maxOrder + 1,
       });
       if (response.success) {
         setShowModal(false);
@@ -470,10 +505,86 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate, cours
     setShowModal(true);
   };
 
+  // 构建树形结构数据（从 API 获取的章节和知识点）
+  const treeData = useMemo(() => {
+    // 如果没有章节数据，返回空结构
+    if (chapters.length === 0) {
+      return {
+        id: courseId || 'empty',
+        title: courseName || '课程学习',
+        type: 'root',
+        status: 'active',
+        children: []
+      };
+    }
+
+    // 构建章节树
+    const chapterNodes = chapters.map((chapter) => {
+      // 找出属于该章节的知识点
+      const chapterKnowledgePoints = knowledgePoints.filter(
+        (kp) => kp.chapterId === chapter.id
+      );
+
+      return {
+        id: chapter.id,
+        title: `${chapter.order}. ${chapter.name}`,
+        type: 'category',
+        status: chapter.status?.toLowerCase() || 'active',
+        children: chapterKnowledgePoints.map((kp) => ({
+          id: kp.id,
+          title: kp.name,
+          type: 'leaf',
+          status: kp.status?.toLowerCase() || 'active',
+          data: kp
+        }))
+      };
+    });
+
+    return {
+      id: courseId || 'course',
+      title: courseName || '课程学习',
+      type: 'root',
+      status: 'active',
+      children: chapterNodes
+    };
+  }, [chapters, knowledgePoints, courseId, courseName]);
+
+  // Fetch Study Records
+  const fetchStudyRecords = useCallback(async () => {
+    if (!courseId) return;
+    try {
+      const response = await getStudyRecordList({ courseId });
+      if (response.success && response.data) {
+        setStudyRecords(response.data || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch study records:', err);
+    }
+  }, [courseId]);
+
   // Initial fetch
   useEffect(() => {
     fetchChapters();
-  }, [fetchChapters]);
+
+    // 获取课程详情
+    if (courseId) {
+      getCourseById(courseId).then(response => {
+        if (response.success && response.data) {
+          setCourseName(response.data.name);
+          setCourseInfo(response.data);
+        }
+      });
+    }
+  }, [fetchChapters, courseId]);
+
+  // 当 courseId 变化时获取学习记录
+  useEffect(() => {
+    if (courseId) {
+      fetchStudyRecords();
+    } else {
+      setStudyRecords([]);
+    }
+  }, [courseId, fetchStudyRecords]);
   
   // Focus state
   const [focusedChapterId, setFocusedChapterId] = useState<string | null>(null);
@@ -629,7 +740,7 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate, cours
         return node;
     };
 
-    traverse(courseData, 0);
+    traverse(treeData, 0);
 
     const catNodes = nodes.filter(n => n.type === 'category');
     let spineData = null;
@@ -642,7 +753,7 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate, cours
     }
 
     return { nodes, links, spine: spineData, treeHeight: currentY };
-  }, [courseData, isEditMode, isMicro, focusedChapterId]);
+  }, [treeData, isEditMode, isMicro, focusedChapterId]);
 
 
   // --- AUTO-FIT ON MOUNT ---
@@ -1051,11 +1162,20 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate, cours
                 </button>
                 <div>
                     <h1 className="text-xl font-black text-slate-800 tracking-tight flex items-center">
-                        遥感原理与应用
+                        {courseName || '课程学习'}
                     </h1>
                     <div className="flex items-center space-x-2 mt-0.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                        <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide">Live Learning</span>
+                        {studyMode === 'study' ? (
+                            <>
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide">学习中</span>
+                            </>
+                        ) : (
+                            <>
+                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                                <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wide">复习中</span>
+                            </>
+                        )}
                     </div>
                 </div>
              </div>
@@ -1300,30 +1420,36 @@ const CourseDetailStudy: React.FC<CourseDetailStudyProps> = ({ onNavigate, cours
             </div>
 
             <div className="flex-1 overflow-hidden flex">
-                {/* Left: Timeline */}
+                {/* Left: Timeline / 学习记录 */}
                 <div className="w-1/2 h-full overflow-y-auto border-r border-slate-100 px-4 py-4">
-                    <h3 className="text-xs font-bold text-slate-400 mb-4 uppercase tracking-wider pl-2">Timeline</h3>
-                    <div className="relative border-l-2 border-slate-100 ml-2 space-y-6 pb-20">
-                        {[
-                            { id: 'sess-1', date: '10.08', title: '电磁波谱', relatedNodeId: 'ch-1', chapterIndex: 1 },
-                            { id: 'sess-2', date: '10.10', title: '卫星轨道', relatedNodeId: 'ch-2', chapterIndex: 2 },
-                            { id: 'sess-3', date: '10.12', title: '成像原理', relatedNodeId: 'ch-3', chapterIndex: 3 },
-                            { id: 'sess-4', date: '10.15', title: '几何处理', relatedNodeId: 'ch-5', active: true, chapterIndex: 5 },
-                        ].map((sess) => (
-                            <div 
-                                key={sess.id} 
-                                onClick={() => focusChapter(sess.relatedNodeId)}
-                                className={`relative pl-4 cursor-pointer group transition-all`}
-                            >
-                                <div className={`absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full border-2 transition-colors ${sess.active ? 'bg-emerald-500 border-emerald-200' : 'bg-white border-slate-300 group-hover:border-blue-400'}`}></div>
-                                <div>
-                                    <span className={`text-xs font-bold ${sess.active ? 'text-emerald-600' : 'text-slate-500'}`}>{sess.date}</span>
-                                    <div className={`text-sm font-bold ${sess.active ? 'text-slate-800' : 'text-slate-600'} line-clamp-1`}>{sess.title}</div>
-                                    <div className="text-[9px] text-slate-400 mt-0.5">(对应第{sess.chapterIndex}章)</div>
+                    <h3 className="text-xs font-bold text-slate-400 mb-4 uppercase tracking-wider pl-2">学习记录</h3>
+                    {studyRecords.length === 0 ? (
+                        <div className="text-center py-8 text-slate-400">
+                            <Clock size={24} className="mx-auto mb-2 opacity-50" />
+                            <p className="text-xs">暂无学习记录</p>
+                        </div>
+                    ) : (
+                        <div className="relative border-l-2 border-slate-100 ml-2 space-y-4 pb-20">
+                            {studyRecords.slice(0, 5).map((record) => (
+                                <div
+                                    key={record.id}
+                                    className="relative pl-4 cursor-pointer group transition-all"
+                                    onClick={() => onNavigate(AppView.TIME_MACHINE, { recordId: record.id })}
+                                >
+                                    <div className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-emerald-200"></div>
+                                    <div>
+                                        <span className="text-xs font-bold text-emerald-600">
+                                            {new Date(record.recordedAt).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}
+                                        </span>
+                                        <div className="text-sm font-bold text-slate-800 line-clamp-1">{record.title}</div>
+                                        <div className="text-[9px] text-slate-400 mt-0.5">
+                                            {Math.round(record.duration / 60)}分钟
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Right: Knowledge Points */}
