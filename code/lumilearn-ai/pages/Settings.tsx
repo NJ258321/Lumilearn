@@ -77,6 +77,37 @@ const Settings: React.FC<SettingsProps> = ({ onNavigate }) => {
     setSuccess(null);
   };
 
+  // Handle schedule change
+  const handleScheduleChange = (period: 'morning' | 'afternoon' | 'evening', type: 'start' | 'end', value: string) => {
+    if (!settings) return;
+    setSettings({
+      ...settings,
+      schedule: {
+        ...settings.schedule,
+        [period]: {
+          ...settings.schedule?.[period],
+          [type]: value,
+        },
+      },
+    });
+    setHasChanges(true);
+    setSuccess(null);
+  };
+
+  // Handle schedule enabled toggle
+  const handleScheduleEnabledChange = (enabled: boolean) => {
+    if (!settings) return;
+    setSettings({
+      ...settings,
+      schedule: {
+        ...settings.schedule,
+        enabled,
+      },
+    });
+    setHasChanges(true);
+    setSuccess(null);
+  };
+
   // Handle displayName change
   const handleDisplayNameChange = (value: string) => {
     if (!settings) return;
@@ -102,6 +133,7 @@ const Settings: React.FC<SettingsProps> = ({ onNavigate }) => {
         notifications: settings.notifications,
         ai: settings.ai,
         display: settings.display,
+        schedule: settings.schedule,
       };
 
       const response = await updateUserSettings(updateData);
@@ -422,6 +454,87 @@ const Settings: React.FC<SettingsProps> = ({ onNavigate }) => {
                   <option value="B">B - 良好</option>
                   <option value="C">C - 及格</option>
                 </select>
+              </div>
+
+              {/* 学习时间段配置 */}
+              <div className="pt-4 mt-4 border-t border-slate-100">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-xs font-bold text-slate-500">学习时间段</label>
+                  <button
+                    onClick={() => handleScheduleEnabledChange(!settings?.schedule?.enabled)}
+                    className={`w-12 h-6 rounded-full transition-colors ${
+                      settings?.schedule?.enabled ? 'bg-blue-500' : 'bg-slate-300'
+                    }`}
+                  >
+                    <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
+                      settings?.schedule?.enabled ? 'translate-x-6' : 'translate-x-0.5'
+                    }`} />
+                  </button>
+                </div>
+
+                {settings?.schedule?.enabled && (
+                  <div className="space-y-3">
+                    {/* 上午时段 */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-600 w-12">上午</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          value={settings?.schedule?.morning?.start || '09:00'}
+                          onChange={(e) => handleScheduleChange('morning', 'start', e.target.value)}
+                          className="px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                        />
+                        <span className="text-slate-400">-</span>
+                        <input
+                          type="time"
+                          value={settings?.schedule?.morning?.end || '12:00'}
+                          onChange={(e) => handleScheduleChange('morning', 'end', e.target.value)}
+                          className="px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 下午时段 */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-600 w-12">下午</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          value={settings?.schedule?.afternoon?.start || '14:00'}
+                          onChange={(e) => handleScheduleChange('afternoon', 'start', e.target.value)}
+                          className="px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                        />
+                        <span className="text-slate-400">-</span>
+                        <input
+                          type="time"
+                          value={settings?.schedule?.afternoon?.end || '18:00'}
+                          onChange={(e) => handleScheduleChange('afternoon', 'end', e.target.value)}
+                          className="px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 晚上时段 */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-600 w-12">晚上</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          value={settings?.schedule?.evening?.start || '19:00'}
+                          onChange={(e) => handleScheduleChange('evening', 'start', e.target.value)}
+                          className="px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                        />
+                        <span className="text-slate-400">-</span>
+                        <input
+                          type="time"
+                          value={settings?.schedule?.evening?.end || '21:00'}
+                          onChange={(e) => handleScheduleChange('evening', 'end', e.target.value)}
+                          className="px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

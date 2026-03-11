@@ -46,12 +46,29 @@ const PORT = process.env.PORT || 3000
 
 // ==================== Middleware ====================
 
-// CORS configuration
+// CORS configuration - 允许所有常见开发地址
+const corsOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:3003',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3003',
+  // 允许所有局域网IP访问
+  /^http:\/\/192\.168\.\d+\.\d+:5173$/,
+  /^http:\/\/192\.168\.\d+\.\d+:3000$/,
+]
+
 app.use(cors({
+<<<<<<< HEAD
   origin: ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3003', 'http://127.0.0.1:5173', 'http://127.0.0.1:3000', 'http://127.0.0.1:3003'],
+=======
+  origin: corsOrigins,
+>>>>>>> 4275942bedfbd19742565f0e1368a74390de1bc7
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+  exposedHeaders: ['Content-Length', 'Content-Type']
 }))
 
 // Static file serving (for uploaded files)
@@ -86,7 +103,11 @@ app.get('/api/time', (_req: Request, res: Response) => {
       date: now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }),
       time: now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
       dayOfWeek: now.toLocaleDateString('zh-CN', { weekday: 'long' }),
+<<<<<<< HEAD
       timestamp: now.getTime()
+=======
+      timestampMs: now.getTime()
+>>>>>>> 4275942bedfbd19742565f0e1368a74390de1bc7
     }
   })
 })

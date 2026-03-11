@@ -10,6 +10,14 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000
 // 导入错误处理
 import { getErrorMessage, isNetworkError } from './errorMessages'
 
+// Token 存储 key
+const TOKEN_KEY = 'lumilearn_token'
+
+// 获取本地存储的 token
+function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY)
+}
+
 /**
  * API 客户端类
  * 统一处理所有 HTTP 请求、错误响应和状态码
@@ -29,6 +37,7 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`
+    console.log('[API Request] URL:', url, 'Method:', options.method || 'GET')
 
     try {
       // 提取自定义 headers，移除内部的 _skipDefaultContentType 标记
@@ -40,9 +49,23 @@ class ApiClient {
       // 只有当没有明确设置 Content-Type 且不是跳过默认时才添加 JSON 头
       const hasContentType = Object.keys(sanitizedHeaders).some(k => k.toLowerCase() === 'content-type')
 
+<<<<<<< HEAD
       const headers = hasContentType || skipDefaultContentType
         ? sanitizedHeaders
         : { ...sanitizedHeaders, 'Content-Type': 'application/json' }
+=======
+      // 获取 token 并添加到请求头
+      const token = getToken()
+      console.log('[API Request] Token:', token ? `${token.substring(0, 20)}...` : 'null')
+      const authHeaders: Record<string, string> = {}
+      if (token) {
+        authHeaders['Authorization'] = `Bearer ${token}`
+      }
+
+      const headers = hasContentType || skipDefaultContentType
+        ? { ...sanitizedHeaders, ...authHeaders }
+        : { ...sanitizedHeaders, 'Content-Type': 'application/json', ...authHeaders }
+>>>>>>> 4275942bedfbd19742565f0e1368a74390de1bc7
 
       const response = await fetch(url, {
         ...options,
@@ -217,6 +240,7 @@ export const API_CONFIG = {
       complete: '/api/review',  // :knowledgePointId/complete
       statistics: '/api/review/statistics',
       course: '/api/review/course',  // :courseId
+      dailyReviewOverview: '/api/daily-review/overview',
     },
     // P4 - 数据分析
     analysis: {

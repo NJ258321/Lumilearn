@@ -276,16 +276,38 @@ export interface KnowledgePointsStats {
 
 // 周统计
 export interface WeeklyStats {
-  studyTime: number
-  studyDays: number
-  mistakes: number
+  studyTime: number    // 本周学习时长（分钟）
+  studyDays: number   // 学习天数
+  mistakes: number    // 本周错题数
+}
+
+// 进度警告
+export interface ProgressWarning {
+  level: 'HIGH' | 'NORMAL' | 'LOW'  // 警告等级
+  message: string                       // 警告消息
+  lagPercentage: number                // 滞后百分比
+  completedTasks: number               // 已完成任务数
+  totalTasks: number                   // 总任务数
+  timeProgress: number                 // 时间进度百分比
+  taskProgress: number                 // 任务进度百分比
 }
 
 // 总体学习仪表盘
+// 今日统计
+export interface TodayStats {
+  dailyGoal: number     // 今日目标学习时长（分钟）
+  studyTime: number    // 今日已学习时长（分钟）
+  taskTotal: number    // 今日任务总数
+  taskCompleted: number // 今日已完成任务数
+  progress: number     // 任务完成进度（百分比）
+}
+
 export interface Dashboard {
   coursesCount: number
   knowledgePoints: KnowledgePointsStats
   weeklyStats: WeeklyStats
+  todayStats: TodayStats  // 今日统计
+  progressWarning: ProgressWarning | null  // 进度警告
   totalMistakes: number
   recentStudyRecords: Array<{ date: string; duration: number }>
 }
@@ -461,21 +483,38 @@ export interface GenerateReviewPlanRequest {
 // 今日复习任务项
 export interface TodayReviewItem {
   id: string
-  knowledgePointId: string
-  knowledgePointName: string
-  courseName?: string
-  type: 'new' | 'review'
-  reviewCount: number
+  knowledgePointId?: string
+  knowledgePointName?: string
+  courseName: string
+  courseId: string
+  courseStatus: string
+  type: 'new' | 'weak_point' | 'review' | 'consolidation' | 'CHAPTER_REVIEW' | 'MOCK_EXAM' | 'WEAK_POINT'
   reason: string
   estimatedTime: number
-  masteryScore: number
+  restTime: number
+  masteryScore?: number
+  source: 'exam_task' | 'dynamic'
+  examTaskId?: string
 }
 
 // 今日复习任务
 export interface TodayReview {
   date: string
+  dailyGoal: number
   totalItems: number
   totalTime: number
+  totalRestTime: number
+  totalTaskAndRestTime: number
+  coveredCourses: number
+  schedule: SchedulePreferences
+  courses: Array<{
+    courseId: string
+    courseName: string
+    courseStatus: string
+    daysUntilExam: number
+    taskCount: number
+    taskTypes: string[]
+  }>
   items: TodayReviewItem[]
 }
 
@@ -810,6 +849,23 @@ export interface AIPreferences {
 export interface DisplayPreferences {
   theme: 'light' | 'dark' | 'auto'
   language: string
+}
+
+// 学习计划时间段偏好
+export interface SchedulePreferences {
+  enabled: boolean
+  morning: {
+    start: string  // HH:mm 格式，如 "09:00"
+    end: string   // HH:mm 格式，如 "12:00"
+  }
+  afternoon: {
+    start: string  // HH:mm 格式
+    end: string   // HH:mm 格式
+  }
+  evening: {
+    start: string  // HH:mm 格式
+    end: string   // HH:mm 格式
+  }
 }
 
 // 认证响应（包含 token）
@@ -1262,6 +1318,7 @@ export interface UserSettingsResponse {
   notifications: NotificationPreferences
   ai: AIPreferences
   display: DisplayPreferences
+  schedule: SchedulePreferences
 }
 
 // 更新设置请求
@@ -1271,6 +1328,7 @@ export interface UpdateSettingsRequest {
   notifications?: Partial<NotificationPreferences>
   ai?: Partial<AIPreferences>
   display?: Partial<DisplayPreferences>
+  schedule?: Partial<SchedulePreferences>
 }
 
 // 默认设置响应
@@ -1279,6 +1337,7 @@ export interface DefaultSettingsResponse {
   notifications: NotificationPreferences
   ai: AIPreferences
   display: DisplayPreferences
+  schedule: SchedulePreferences
 }
 
 // ========== P5 - 复习计划增强类型 ==========

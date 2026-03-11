@@ -11,6 +11,157 @@ const router = Router()
 // 艾宾浩斯遗忘曲线复习间隔（天）
 const EBINGHAUS_INTERVALS = [1, 3, 7, 14, 30]
 
+// 默认学习时间段配置
+const DEFAULT_SCHEDULE = {
+  enabled: true,
+  morning: { start: '09:00', end: '12:00' },
+  afternoon: { start: '14:00', end: '18:00' },
+  evening: { start: '19:00', end: '21:00' }
+}
+
+// 任务类型定义
+interface TaskTypeConfig {
+  type: string
+  duration: number  // 任务时长（分钟）
+}
+
+// 任务类型配置
+const TASK_TYPE_CONFIGS: TaskTypeConfig[] = [
+  // ExamTask 类型
+  { type: 'CHAPTER_REVIEW', duration: 40 },    // 课堂回顾
+  { type: 'MOCK_EXAM', duration: 80 },        // 全真模拟
+  { type: 'WEAK_POINT', duration: 25 },      // 题目练习
+  // 动态生成类型
+  { type: 'weak_point', duration: 15 },        // 薄弱点复习
+  { type: 'review', duration: 10 },           // 艾宾浩斯复习
+  { type: 'new', duration: 25 },              // 新知识学习
+  { type: 'consolidation', duration: 15 }     // 巩固复习
+]
+
+// 计算休息时长
+function calculateRestTime(taskDuration: number): number {
+  if (taskDuration < 30) return 5      // <30min: 休息5min
+  if (taskDuration <= 45) return 8     // 30-45min: 休息8min
+  return 10                             // >45min: 休息10min
+}
+
+// 获取任务时长
+function getTaskDuration(taskType: string): number {
+  const config = TASK_TYPE_CONFIGS.find(c => c.type === taskType)
+  return config?.duration || 30 // 默认30分钟
+}
+
+// 解析时间字符串为分钟数（从0点开始）
+function parseTimeToMinutes(timeStr: string): number {
+  const [hours, minutes] = timeStr.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+// 计算时间段可用时长（分钟）
+function getPeriodDuration(period: { start: string, end: string }): number {
+  const startMinutes = parseTimeToMinutes(period.start)
+  const endMinutes = parseTimeToMinutes(period.end)
+  return Math.max(0, endMinutes - startMinutes)
+}
+
+// 获取用户的学习时间段设置
+async function getUserSchedule(userId: string | null): Promise<typeof DEFAULT_SCHEDULE> {
+  if (!userId) return DEFAULT_SCHEDULE
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { preferences: true }
+    })
+
+    if (!user?.preferences) return DEFAULT_SCHEDULE
+
+    const prefs = JSON.parse(user.preferences)
+    if (!prefs.schedule) return DEFAULT_SCHEDULE
+
+    return {
+      enabled: prefs.schedule.enabled ?? DEFAULT_SCHEDULE.enabled,
+      morning: prefs.schedule.morning ?? DEFAULT_SCHEDULE.morning,
+      afternoon: prefs.schedule.afternoon ?? DEFAULT_SCHEDULE.afternoon,
+      evening: prefs.schedule.evening ?? DEFAULT_SCHEDULE.evening
+    }
+  } catch {
+    return DEFAULT_SCHEDULE
+  }
+}
+
+// 获取用户的每日学习目标时长（根据学习时间段计算）
+async function getUserDailyGoal(userId: string | null): Promise<number> {
+  // 默认时间段：上午 09:00-12:00, 下午 14:00-18:00, 晚上 19:00-21:00
+  const DEFAULT_SCHEDULE = {
+    morning: { start: '09:00', end: '12:00' },
+    afternoon: { start: '14:00', end: '18:00' },
+    evening: { start: '19:00', end: '21:00' }
+  }
+
+  // 计算时间段的分钟数
+  const calculatePeriodMinutes = (start: string, end: string): number => {
+    const [startHour, startMin] = start.split(':').map(Number)
+    const [endHour, endMin] = end.split(':').map(Number)
+    return (endHour * 60 + endMin) - (startHour * 60 + startMin)
+  }
+
+  // 默认540分钟（9小时）
+  let dailyGoal = 540
+  let userSchedule = DEFAULT_SCHEDULE
+
+  if (!userId) {
+    // 未登录用户使用默认时间段
+    const morningMinutes = calculatePeriodMinutes(DEFAULT_SCHEDULE.morning.start, DEFAULT_SCHEDULE.morning.end)
+    const afternoonMinutes = calculatePeriodMinutes(DEFAULT_SCHEDULE.afternoon.start, DEFAULT_SCHEDULE.afternoon.end)
+    const eveningMinutes = calculatePeriodMinutes(DEFAULT_SCHEDULE.evening.start, DEFAULT_SCHEDULE.evening.end)
+    return morningMinutes + afternoonMinutes + eveningMinutes
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { preferences: true }
+    })
+
+    if (!user?.preferences) {
+      // 没有设置使用默认时间段
+      const morningMinutes = calculatePeriodMinutes(DEFAULT_SCHEDULE.morning.start, DEFAULT_SCHEDULE.morning.end)
+      const afternoonMinutes = calculatePeriodMinutes(DEFAULT_SCHEDULE.afternoon.start, DEFAULT_SCHEDULE.afternoon.end)
+      const eveningMinutes = calculatePeriodMinutes(DEFAULT_SCHEDULE.evening.start, DEFAULT_SCHEDULE.evening.end)
+      return morningMinutes + afternoonMinutes + eveningMinutes
+    }
+
+    const prefs = JSON.parse(user.preferences)
+    // 优先使用用户设置的 schedule
+    if (prefs.schedule?.enabled !== false) {
+      userSchedule = {
+        morning: prefs.schedule?.morning || DEFAULT_SCHEDULE.morning,
+        afternoon: prefs.schedule?.afternoon || DEFAULT_SCHEDULE.afternoon,
+        evening: prefs.schedule?.evening || DEFAULT_SCHEDULE.evening
+      }
+    }
+
+    const morningMinutes = calculatePeriodMinutes(userSchedule.morning.start, userSchedule.morning.end)
+    const afternoonMinutes = calculatePeriodMinutes(userSchedule.afternoon.start, userSchedule.afternoon.end)
+    const eveningMinutes = calculatePeriodMinutes(userSchedule.evening.start, userSchedule.evening.end)
+    dailyGoal = morningMinutes + afternoonMinutes + eveningMinutes
+  } catch {
+    // 使用默认计算
+    const morningMinutes = calculatePeriodMinutes(DEFAULT_SCHEDULE.morning.start, DEFAULT_SCHEDULE.morning.end)
+    const afternoonMinutes = calculatePeriodMinutes(DEFAULT_SCHEDULE.afternoon.start, DEFAULT_SCHEDULE.afternoon.end)
+    const eveningMinutes = calculatePeriodMinutes(DEFAULT_SCHEDULE.evening.start, DEFAULT_SCHEDULE.evening.end)
+    dailyGoal = morningMinutes + afternoonMinutes + eveningMinutes
+  }
+
+  return dailyGoal
+}
+
+// 辅助函数：将日期转换为本地 YYYY-MM-DD 格式
+function formatDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 // ==================== POST /api/review/generate-plan - 生成复习计划 ====================
 
 router.post('/review/generate-plan', [
@@ -272,34 +423,119 @@ router.post('/review/generate-plan', [
 
 // ==================== GET /api/review/today - 获取今日复习任务 ====================
 
-router.get('/review/today', async (_req: Request, res: Response) => {
-  try {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+// 任务类型
+type TaskType = 'new' | 'weak_point' | 'review' | 'consolidation' | 'CHAPTER_REVIEW' | 'MOCK_EXAM' | 'WEAK_POINT'
 
+// 任务项接口
+interface TodayTaskItem {
+  id: string
+  knowledgePointId?: string
+  knowledgePointName?: string
+  courseName: string
+  courseId: string
+  courseStatus: string
+  type: TaskType
+  reason: string
+  estimatedTime: number
+  masteryScore?: number
+  source: 'exam_task' | 'dynamic'  // 任务来源
+  examTaskId?: string  // 如果是exam_task来源，记录原始ID
+}
+
+router.get('/review/today', async (req: Request, res: Response) => {
+  try {
+    // 获取用户ID
+    const userId = getUserIdFromRequest(req)
+
+    // 使用本地时区获取今天的日期
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const tomorrow = new Date(today)
     tomorrow.setDate(tomorrow.getDate() + 1)
 
-    // 获取需要复习的知识点
-    const knowledgePoints = await prisma.knowledgePoint.findMany({
+    // ==================== 1. 获取用户设置 ====================
+    const userSchedule = await getUserSchedule(userId)
+    const dailyGoal = await getUserDailyGoal(userId)
+
+    // 计算各时段可用时长
+    const morningDuration = getPeriodDuration(userSchedule.morning)
+    const afternoonDuration = getPeriodDuration(userSchedule.afternoon)
+    const eveningDuration = getPeriodDuration(userSchedule.evening)
+    const totalAvailableTime = morningDuration + afternoonDuration + eveningDuration
+
+    // ==================== 2. 获取今日 ExamTask 计划任务 ====================
+    const examTasks = await prisma.examTask.findMany({
       where: {
-        updatedAt: {
-          gte: new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
+        scheduledDate: {
+          gte: today,
+          lt: tomorrow
+        },
+        status: { in: ['PENDING', 'IN_PROGRESS'] }
+      },
+      include: {
+        course: {
+          select: { id: true, name: true, status: true, examDate: true }
         }
       },
-      select: {
-        id: true,
-        name: true,
-        masteryScore: true,
-        status: true,
-        updatedAt: true,
-        importance: true,
-        chapter: {
-          select: {
-            course: {
+      orderBy: { scheduledDate: 'asc' }
+    })
+
+    // 转换 ExamTask 为标准任务格式
+    const examTaskItems: TodayTaskItem[] = examTasks.map(task => {
+      let taskType: TaskType = 'WEAK_POINT'
+      let reason = '任务练习'
+
+      if (task.type === 'CHAPTER_REVIEW') {
+        taskType = 'CHAPTER_REVIEW'
+        reason = '章节回顾'
+      } else if (task.type === 'MOCK_EXAM') {
+        taskType = 'MOCK_EXAM'
+        reason = '全真模拟'
+      } else if (task.type === 'WEAK_POINT') {
+        taskType = 'WEAK_POINT'
+        reason = '薄弱点练习'
+      }
+
+      return {
+        id: task.id,
+        courseName: task.course.name,
+        courseId: task.course.id,
+        courseStatus: task.course.status,
+        type: taskType,
+        reason,
+        estimatedTime: task.estimatedDuration,
+        source: 'exam_task',
+        examTaskId: task.id
+      }
+    })
+
+    // 计算 ExamTask 总时长
+    const examTaskTotalTime = examTaskItems.reduce((sum, t) => sum + t.estimatedTime, 0)
+
+    // ==================== 3. 获取动态生成任务 ====================
+    // 计算剩余可用时间
+    let remainingTime = dailyGoal - examTaskTotalTime
+    // 如果examTask已经超过了每日目标，就不再生成动态任务
+    if (remainingTime <= 0) {
+      remainingTime = 0
+    }
+
+    // 获取所有课程及其知识点
+    const courses = await prisma.course.findMany({
+      where: {
+        status: { in: ['STUDYING', 'REVIEWING'] }
+      },
+      include: {
+        chapters: {
+          include: {
+            knowledgePoints: {
               select: {
                 id: true,
-                name: true
+                name: true,
+                status: true,
+                masteryScore: true,
+                updatedAt: true,
+                importance: true
               }
             }
           }
@@ -307,84 +543,367 @@ router.get('/review/today', async (_req: Request, res: Response) => {
       }
     })
 
-    // 筛选今天需要复习的
-    const todayItems: Array<{
-      id: string
-      knowledgePointId: string
-      knowledgePointName: string
+    // 计算每门课程的紧迫度和任务类型
+    const courseInfos: Array<{
+      courseId: string
       courseName: string
-      type: 'review' | 'new'
-      reviewCount: number
-      reason: string
-      estimatedTime: number
-      masteryScore: number
+      status: string
+      daysUntilExam: number
+      urgencyScore: number
+      weakPoints: any[]
+      reviewPoints: any[]
+      newPoints: any[]
+      consolidationPoints: any[]
+      masteryRate?: number // 掌握率（0-100）
     }> = []
 
-    let totalTime = 0
+    for (const course of courses) {
+      // 计算距离考试天数
+      let daysUntilExam = 999
+      if (course.examDate) {
+        const examDate = new Date(course.examDate)
+        daysUntilExam = Math.ceil((examDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      }
 
-    for (const kp of knowledgePoints) {
-      const daysSinceLastStudy = Math.floor(
-        (today.getTime() - new Date(kp.updatedAt).getTime()) / (1000 * 60 * 60 * 24)
-      )
+      // 分类知识点
+      const allKps = course.chapters.flatMap(ch => ch.knowledgePoints)
 
-      // 判断是否需要今天复习
-      const needsReview = EBINGHAUS_INTERVALS.some(interval =>
-        Math.abs(interval - daysSinceLastStudy) <= 1
-      ) || kp.status === 'NEED_REVIEW' || kp.status === 'WEAK'
+      // 薄弱点
+      const weakPoints = allKps.filter(kp => kp.status === 'WEAK' || (kp.masteryScore !== null && kp.masteryScore < 40))
 
-      if (needsReview) {
-        // 计算是第几次复习
-        let reviewCount = 1
-        for (let i = 0; i < EBINGHAUS_INTERVALS.length; i++) {
-          if (daysSinceLastStudy >= EBINGHAUS_INTERVALS[i]) {
-            reviewCount = i + 2
-          }
-        }
+      // 艾宾浩斯复习点
+      const reviewPoints = allKps.filter(kp => {
+        const daysSince = Math.floor((today.getTime() - new Date(kp.updatedAt).getTime()) / (1000 * 60 * 60 * 24))
+        return EBINGHAUS_INTERVALS.some(interval => Math.abs(interval - daysSince) <= 1)
+      })
 
-        // 生成原因
-        let reason: string
-        if (kp.status === 'NEED_REVIEW') {
-          reason = '需要学习的新知识'
-        } else if (kp.status === 'WEAK') {
-          reason = '薄弱知识点，需要加强复习'
-        } else if (daysSinceLastStudy === 0) {
-          reason = '今天刚学习'
-        } else {
-          reason = `上次学习已过${daysSinceLastStudy}天`
-        }
+      // 新知识点
+      const newPoints = allKps.filter(kp => kp.status === 'NEED_REVIEW')
 
-        const estimatedTime = kp.status === 'NEED_REVIEW' ? 30 : 15
+      // 近期巩固点
+      const consolidationPoints = allKps.filter(kp => {
+        const daysSince = Math.floor((today.getTime() - new Date(kp.updatedAt).getTime()) / (1000 * 60 * 60 * 24))
+        return daysSince >= 0 && daysSince <= 3 && kp.status !== 'NEED_REVIEW'
+      })
 
-        todayItems.push({
-          id: `review-${kp.id}-${today.toISOString().split('T')[0]}`,
+      // 计算紧迫度分数
+      const examWeight = daysUntilExam < 30 ? (30 - daysUntilExam) * 2 : 0
+      const weakWeight = weakPoints.length * 3
+      const reviewWeight = reviewPoints.length * 2
+      const statusWeight = course.status === 'REVIEWING' ? 15 : 0
+      const urgencyScore = examWeight + weakWeight + reviewWeight + statusWeight
+
+      courseInfos.push({
+        courseId: course.id,
+        courseName: course.name,
+        status: course.status,
+        daysUntilExam,
+        urgencyScore,
+        weakPoints,
+        reviewPoints,
+        newPoints,
+        consolidationPoints
+      })
+    }
+
+    // 按紧迫度排序
+    courseInfos.sort((a, b) => b.urgencyScore - a.urgencyScore)
+
+    // 动态生成任务
+    const dynamicItems: TodayTaskItem[] = []
+    const usedKpIds = new Set<string>()
+
+    // 已分配的 ExamTask 课程ID
+    const examTaskCourseIds = new Set(examTasks.map(t => t.courseId))
+
+    // ==================== 改进的任务生成逻辑 ====================
+    // 按紧迫度排序所有课程（考试临近、薄弱点多 -> 优先）
+    const sortedCourses = [...courseInfos].sort((a, b) => b.urgencyScore - a.urgencyScore)
+
+    // 计算每门课程的掌握率和进度
+    for (const course of sortedCourses) {
+      const allKps = course.weakPoints.concat(course.reviewPoints).concat(course.newPoints).concat(course.consolidationPoints)
+      const total = allKps.length
+      const mastered = allKps.filter(kp => (kp.masteryScore || 0) >= 80).length
+      course.masteryRate = total > 0 ? Math.round((mastered / total) * 100) : 0
+    }
+
+    // 总任务数量限制：每天最多8个任务
+    const maxTotalDynamicTasks = 8
+    let totalDynamicTaskCount = 0
+
+    // 第一轮：题目练习（当某课程薄弱点 >= 3 时，自动安排）
+    let practiceCount = 0
+    const maxPractice = 1 // 每天最多1次题目练习
+    for (const course of sortedCourses) {
+      if (remainingTime <= 0 || practiceCount >= maxPractice || totalDynamicTaskCount >= maxTotalDynamicTasks) break
+      if (course.weakPoints.length < 3) continue // 薄弱点>=3才安排
+
+      const taskTime = 25
+      const restTime = calculateRestTime(taskTime)
+      if (taskTime + restTime > remainingTime) continue
+
+      remainingTime -= taskTime
+      practiceCount++
+      totalDynamicTaskCount++
+      dynamicItems.push({
+        id: `practice-${course.courseId}-${formatDate(today)}`,
+        knowledgePointId: undefined,
+        knowledgePointName: `${course.courseName} - 题目练习`,
+        courseName: course.courseName,
+        courseId: course.courseId,
+        courseStatus: course.status,
+        type: 'WEAK_POINT', // 使用大写，与 ExamTask 一致
+        reason: `薄弱点较多(${course.weakPoints.length}个)，进行针对性练习`,
+        estimatedTime: taskTime,
+        masteryScore: 0,
+        source: 'dynamic'
+      })
+    }
+
+    // 第二轮：全真模拟（当复习中课程进度 > 60% 时自动安排）
+    let mockExamCount = 0
+    const maxMockExams = 1 // 每天最多1次全真模拟
+    for (const course of sortedCourses.filter(c => c.status === 'REVIEWING')) {
+      if (remainingTime <= 0 || mockExamCount >= maxMockExams || totalDynamicTaskCount >= maxTotalDynamicTasks) break
+      if ((course as any).masteryRate < 60) continue // 进度>60%才安排
+
+      const taskTime = 80
+      const restTime = calculateRestTime(taskTime)
+      if (taskTime + restTime > remainingTime) continue
+
+      remainingTime -= taskTime
+      mockExamCount++
+      totalDynamicTaskCount++
+      dynamicItems.push({
+        id: `mock-${course.courseId}-${formatDate(today)}`,
+        knowledgePointId: undefined,
+        knowledgePointName: `${course.courseName} - 全真模拟测试`,
+        courseName: course.courseName,
+        courseId: course.courseId,
+        courseStatus: course.status,
+        type: 'MOCK_EXAM', // 使用大写，与 ExamTask 一致
+        reason: `课程进度${(course as any).masteryRate}%，进行模拟测试检验学习效果`,
+        estimatedTime: taskTime,
+        masteryScore: 0,
+        source: 'dynamic'
+      })
+    }
+
+    // 第三轮：薄弱点复习（按课程紧迫度分配）
+    // 每门课程最多1个薄弱点任务，总数不超过3个
+    // 增加时长：15分钟 → 25分钟
+    let weakPointCount = 0
+    const maxWeakPoints = 3
+    for (const course of sortedCourses) {
+      if (remainingTime <= 0 || weakPointCount >= maxWeakPoints || totalDynamicTaskCount >= maxTotalDynamicTasks) break
+      if (course.weakPoints.length === 0) continue
+
+      // 取该课程最薄弱的一个知识点
+      const kp = course.weakPoints[0]
+      if (usedKpIds.has(kp.id)) continue
+
+      const taskTime = 25 // 改为25分钟
+      const restTime = calculateRestTime(taskTime)
+      if (taskTime + restTime > remainingTime) continue
+
+      usedKpIds.add(kp.id)
+      remainingTime -= taskTime
+      weakPointCount++
+      totalDynamicTaskCount++
+      dynamicItems.push({
+        id: `weak-${kp.id}-${formatDate(today)}`,
+        knowledgePointId: kp.id,
+        knowledgePointName: kp.name,
+        courseName: course.courseName,
+        courseId: course.courseId,
+        courseStatus: course.status,
+        type: 'weak_point',
+        reason: '薄弱知识点，需要加强复习',
+        estimatedTime: taskTime,
+        masteryScore: kp.masteryScore || 0,
+        source: 'dynamic'
+      })
+    }
+
+    // 第二轮：艾宾浩斯复习（复习中的课程）
+    // 增加时长：10分钟 → 20分钟
+    let reviewCount = 0
+    const maxReviews = 2
+    for (const course of sortedCourses.filter(c => c.status === 'REVIEWING')) {
+      if (remainingTime <= 0 || reviewCount >= maxReviews || totalDynamicTaskCount >= maxTotalDynamicTasks) break
+      if (course.reviewPoints.length === 0) continue
+
+      const kp = course.reviewPoints[0]
+      if (usedKpIds.has(kp.id)) continue
+
+      const taskTime = 20 // 改为20分钟
+      const restTime = calculateRestTime(taskTime)
+      if (taskTime + restTime > remainingTime) continue
+
+      usedKpIds.add(kp.id)
+      remainingTime -= taskTime
+      reviewCount++
+      totalDynamicTaskCount++
+      dynamicItems.push({
+        id: `review-${kp.id}-${formatDate(today)}`,
+        knowledgePointId: kp.id,
+        knowledgePointName: kp.name,
+        courseName: course.courseName,
+        courseId: course.courseId,
+        courseStatus: course.status,
+        type: 'review',
+        reason: '艾宾浩斯复习周期到了',
+        estimatedTime: taskTime,
+        masteryScore: kp.masteryScore || 0,
+        source: 'dynamic'
+      })
+    }
+
+    // 第三轮：新知识学习（学习中的课程）- 最多2个
+    // 增加时长：25分钟 → 30分钟
+    let newCount = 0
+    const maxNew = 2
+    for (const course of sortedCourses.filter(c => c.status === 'STUDYING')) {
+      if (remainingTime <= 0 || newCount >= maxNew || totalDynamicTaskCount >= maxTotalDynamicTasks) break
+      if (course.newPoints.length === 0) continue
+
+      const kp = course.newPoints[0]
+      if (usedKpIds.has(kp.id)) continue
+
+      const taskTime = 30 // 改为30分钟
+      const restTime = calculateRestTime(taskTime)
+      if (taskTime + restTime > remainingTime) continue
+
+      usedKpIds.add(kp.id)
+      remainingTime -= taskTime
+      newCount++
+      totalDynamicTaskCount++
+      dynamicItems.push({
+        id: `new-${kp.id}-${formatDate(today)}`,
+        knowledgePointId: kp.id,
+        knowledgePointName: kp.name,
+        courseName: course.courseName,
+        courseId: course.courseId,
+        courseStatus: course.status,
+        type: 'new',
+        reason: '学习新知识',
+        estimatedTime: taskTime,
+        masteryScore: kp.masteryScore || 0,
+        source: 'dynamic'
+      })
+    }
+
+    // 第四轮：补充任务（如果有剩余时间且未达到上限）
+    // 继续添加更多薄弱点，与主薄弱点复习保持一致
+    for (const course of sortedCourses) {
+      if (remainingTime <= 0 || totalDynamicTaskCount >= maxTotalDynamicTasks) break
+      if (course.weakPoints.length <= weakPointCount) continue
+
+      for (const kp of course.weakPoints.slice(weakPointCount)) {
+        if (remainingTime <= 0 || totalDynamicTaskCount >= maxTotalDynamicTasks) break
+        if (usedKpIds.has(kp.id)) continue
+
+        const taskTime = 25 // 与薄弱点复习一致
+        const restTime = calculateRestTime(taskTime)
+        if (taskTime + restTime > remainingTime) continue
+
+        usedKpIds.add(kp.id)
+        remainingTime -= taskTime
+        totalDynamicTaskCount++
+        dynamicItems.push({
+          id: `weak-${kp.id}-${formatDate(today)}`,
           knowledgePointId: kp.id,
           knowledgePointName: kp.name,
-          courseName: kp.chapter.course.name,
-          type: kp.status === 'NEED_REVIEW' ? 'new' : 'review',
-          reviewCount,
-          reason,
-          estimatedTime,
-          masteryScore: kp.masteryScore
+          courseName: course.courseName,
+          courseId: course.courseId,
+          courseStatus: course.status,
+          type: 'weak_point',
+          reason: '薄弱知识点，需要加强复习',
+          estimatedTime: taskTime,
+          masteryScore: kp.masteryScore || 0,
+          source: 'dynamic'
         })
-
-        totalTime += estimatedTime
       }
     }
 
-    // 按优先级排序
-    todayItems.sort((a, b) => {
-      if (a.type === 'new' && b.type !== 'new') return -1
-      if (a.type !== 'new' && b.type === 'new') return 1
-      return b.masteryScore - a.masteryScore
+    // ==================== 4. 合并任务并分配时间 ====================
+    const allTasks = [...examTaskItems, ...dynamicItems]
+
+    // 按紧迫度排序（ExamTask优先，然后按课程紧迫度）
+    const allCourseIds = new Set(allTasks.map(t => t.courseId))
+    const courseUrgencyMap = new Map(courseInfos.map(c => [c.courseId, c.urgencyScore]))
+
+    allTasks.sort((a, b) => {
+      // ExamTask 排在前面
+      if (a.source === 'exam_task' && b.source === 'dynamic') return -1
+      if (a.source === 'dynamic' && b.source === 'exam_task') return 1
+
+      // 同类型按课程紧迫度
+      const urgencyA = courseUrgencyMap.get(a.courseId) || 0
+      const urgencyB = courseUrgencyMap.get(b.courseId) || 0
+      return urgencyB - urgencyA
     })
+
+    // 计算总休息时间
+    const totalRestTime = allTasks.reduce((sum, task) => {
+      return sum + calculateRestTime(task.estimatedTime)
+    }, 0)
+
+    // ==================== 5. 返回结果 ====================
+    const totalTime = allTasks.reduce((sum, item) => sum + item.estimatedTime, 0)
+    const totalTaskAndRestTime = totalTime + totalRestTime
+    const coveredCourses = new Set(allTasks.map(item => item.courseName)).size
+
+    // 按课程分组统计
+    const courseTaskTypes = new Map<string, string[]>()
+    for (const item of allTasks) {
+      if (!courseTaskTypes.has(item.courseId)) {
+        courseTaskTypes.set(item.courseId, [])
+      }
+      courseTaskTypes.get(item.courseId)!.push(item.type)
+    }
+
+    // 选取的课程信息
+    const selectedCourseIds = new Set(allTasks.map(item => item.courseId))
+    const selectedCourses = courseInfos
+      .filter(c => selectedCourseIds.has(c.courseId))
+      .map(c => ({
+        courseId: c.courseId,
+        courseName: c.courseName,
+        courseStatus: c.status,
+        daysUntilExam: c.daysUntilExam,
+        taskCount: allTasks.filter(i => i.courseId === c.courseId).length,
+        taskTypes: courseTaskTypes.get(c.courseId) || []
+      }))
 
     res.json({
       success: true,
       data: {
-        date: today.toISOString().split('T')[0],
-        totalItems: todayItems.length,
+        date: formatDate(today),
+        dailyGoal,
+        totalItems: allTasks.length,
         totalTime,
-        items: todayItems
+        totalRestTime,
+        totalTaskAndRestTime,
+        coveredCourses,
+        schedule: userSchedule,
+        courses: selectedCourses,
+        items: allTasks.map(item => ({
+          id: item.id,
+          knowledgePointId: item.knowledgePointId,
+          knowledgePointName: item.knowledgePointName,
+          courseName: item.courseName,
+          courseId: item.courseId,
+          courseStatus: item.courseStatus,
+          type: item.type,
+          reason: item.reason,
+          estimatedTime: item.estimatedTime,
+          restTime: calculateRestTime(item.estimatedTime),
+          masteryScore: item.masteryScore,
+          source: item.source,
+          examTaskId: item.examTaskId
+        }))
       }
     } as ApiResponse<any>)
   } catch (error: any) {
@@ -543,15 +1062,15 @@ router.get('/review/statistics', async (_req: Request, res: Response) => {
 
     // 获取今日复习任务完成情况
     const todayReviews = weeklyReviews.filter(kp =>
-      new Date(kp.updatedAt).toISOString().split('T')[0] === today.toISOString().split('T')[0]
+      formatDate(new Date(kp.updatedAt)) === formatDate(today)
     )
 
     res.json({
       success: true,
       data: {
         period: {
-          start: weekAgo.toISOString().split('T')[0],
-          end: today.toISOString().split('T')[0]
+          start: formatDate(weekAgo),
+          end: formatDate(today)
         },
         statistics: {
           totalReviewedThisWeek: totalReviewed,
@@ -703,15 +1222,8 @@ router.put('/review/replan', [
   validate
 ], async (req: Request, res: Response) => {
   try {
-    const userId = getUserIdFromRequest(req)
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        error: '未登录',
-        code: 'NOT_AUTHENTICATED'
-      } as ApiResponse<undefined>)
-    }
+    // 此接口不需要登录验证，所有用户均可使用
+    // const userId = getUserIdFromRequest(req)
 
     const {
       courseId,
@@ -887,6 +1399,7 @@ router.put('/review/replan', [
 /**
  * 多学科统筹优化 API
  * 多课程同时备考时，智能分配每日学习时间
+ * 注意：此接口不需要登录，所有用户均可使用
  */
 router.post('/review/optimize', [
   body('courseIds').isArray({ min: 1 }).withMessage('课程ID列表不能为空'),
@@ -895,15 +1408,8 @@ router.post('/review/optimize', [
   validate
 ], async (req: Request, res: Response) => {
   try {
-    const userId = getUserIdFromRequest(req)
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        error: '未登录',
-        code: 'NOT_AUTHENTICATED'
-      } as ApiResponse<undefined>)
-    }
+    // 此接口不需要登录验证，所有用户均可使用
+    // const userId = getUserIdFromRequest(req)
 
     const {
       courseIds,
@@ -1207,6 +1713,172 @@ router.get('/review/efficiency', [
       success: false,
       error: '获取学习效率分析失败',
       code: 'EFFICIENCY_ANALYSIS_FAILED'
+    } as ApiResponse<undefined>)
+  }
+})
+
+// ==================== GET /api/daily-review/overview - 今日复习安排概览 ====================
+
+router.get('/daily-review/overview', async (_req: Request, res: Response) => {
+  try {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    // 获取所有课程（排除已归档的）
+    const courses = await prisma.course.findMany({
+      where: {
+        status: { not: 'ARCHIVED' }
+      },
+      include: {
+        chapters: {
+          include: {
+            knowledgePoints: true
+          }
+        }
+      }
+    })
+
+    // 计算每门课程的复习信息
+    const courseReviewInfos = await Promise.all(
+      courses.map(async (course) => {
+        // 统计章节
+        const totalChapters = course.chapters.length
+
+        // 根据知识点掌握度计算已复习章节数（章节中50%以上知识点已掌握视为章节已复习）
+        let reviewedChapters = 0
+        for (const chapter of course.chapters) {
+          const kps = chapter.knowledgePoints
+          if (kps.length === 0) continue
+          const masteredKps = kps.filter(kp => kp.status === 'MASTERED' || (kp.masteryScore !== null && kp.masteryScore >= 60)).length
+          if (masteredKps / kps.length >= 0.5) {
+            reviewedChapters++
+          }
+        }
+        const reviewProgress = totalChapters > 0 ? Math.round((reviewedChapters / totalChapters) * 100) : 0
+
+        // 统计知识点
+        const allKnowledgePoints = course.chapters.flatMap(ch => ch.knowledgePoints)
+        const totalKnowledgePoints = allKnowledgePoints.length
+        const masteredPoints = allKnowledgePoints.filter(kp => kp.status === 'MASTERED' || (kp.masteryScore !== null && kp.masteryScore >= 60)).length
+        const weakPoints = allKnowledgePoints.filter(kp => kp.status === 'WEAK' || (kp.masteryScore !== null && kp.masteryScore < 40)).length
+        const masteryRate = totalKnowledgePoints > 0 ? Math.round((masteredPoints / totalKnowledgePoints) * 100) : 0
+
+        // 计算距考试天数（只计算未过期的考试）
+        let daysUntilExam: number | null = null
+        if (course.examDate) {
+          const examDate = new Date(course.examDate)
+          const days = Math.ceil((examDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+          // 只保留未过期的考试（> 0）或者未设置考试的课程
+          daysUntilExam = days > 0 ? days : null
+        }
+
+        // 计算紧迫程度
+        let urgencyLevel: 'HIGH' | 'NORMAL' | 'LOW' = 'LOW'
+        let urgencyReason = ''
+
+        // 有考试日期的情况
+        if (daysUntilExam !== null) {
+          if (daysUntilExam <= 7) {
+            urgencyLevel = 'HIGH'
+            urgencyReason = '考试临近'
+          } else if (reviewProgress < 30 && daysUntilExam <= 14) {
+            urgencyLevel = 'HIGH'
+            urgencyReason = '复习进度过慢'
+          } else if (weakPoints > 5) {
+            urgencyLevel = 'HIGH'
+            urgencyReason = '薄弱点过多'
+          } else if (daysUntilExam <= 14) {
+            urgencyLevel = 'NORMAL'
+            urgencyReason = '需要关注'
+          } else if (reviewProgress < 60) {
+            urgencyLevel = 'NORMAL'
+            urgencyReason = '复习进度待提升'
+          } else if (weakPoints > 2) {
+            urgencyLevel = 'NORMAL'
+            urgencyReason = '存在薄弱点'
+          } else {
+            urgencyReason = '进度良好'
+          }
+        } else {
+          // 没有考试日期的情况，根据学习进度判断
+          if (reviewProgress === 0 && totalKnowledgePoints > 0) {
+            urgencyLevel = 'NORMAL'
+            urgencyReason = '尚未开始复习'
+          } else if (reviewProgress < 30) {
+            urgencyLevel = 'NORMAL'
+            urgencyReason = '复习进度待提升'
+          } else if (weakPoints > 5) {
+            urgencyLevel = 'NORMAL'
+            urgencyReason = '存在薄弱点'
+          } else if (reviewProgress >= 80 && weakPoints === 0) {
+            urgencyReason = '进度良好'
+          } else {
+            urgencyReason = '按计划推进'
+          }
+        }
+
+        // 计算今日任务（根据紧迫程度和薄弱点）
+        const todayKnowledgePoints = Math.min(
+          weakPoints > 0 ? Math.ceil(weakPoints * 0.3) + 2 : 3,
+          10
+        )
+        const estimatedMinutes = todayKnowledgePoints * 15 // 假设每个知识点15分钟
+
+        return {
+          courseId: course.id,
+          courseName: course.name,
+          courseStatus: course.status,
+          examDate: course.examDate ? course.examDate.toISOString().split('T')[0] : null,
+          daysUntilExam,
+          totalChapters,
+          reviewedChapters,
+          reviewProgress,
+          totalKnowledgePoints,
+          masteredPoints,
+          weakPoints,
+          masteryRate,
+          todayTasks: {
+            knowledgePoints: todayKnowledgePoints,
+            estimatedMinutes
+          },
+          urgencyLevel,
+          urgencyReason
+        }
+      })
+    )
+
+    // 按紧迫程度排序：HIGH > NORMAL > LOW，同级别按距考试天数排序
+    const urgencyOrder = { HIGH: 0, NORMAL: 1, LOW: 2 }
+    courseReviewInfos.sort((a, b) => {
+      const urgencyDiff = urgencyOrder[a.urgencyLevel] - urgencyOrder[b.urgencyLevel]
+      if (urgencyDiff !== 0) return urgencyDiff
+      // 同紧迫程度，按距考试天数升序（天数少的排前面）
+      if (a.daysUntilExam !== null && b.daysUntilExam !== null) {
+        return a.daysUntilExam - b.daysUntilExam
+      }
+      if (a.daysUntilExam !== null) return -1
+      if (b.daysUntilExam !== null) return 1
+      return 0
+    })
+
+    res.json({
+      success: true,
+      data: {
+        courses: courseReviewInfos,
+        summary: {
+          totalCourses: courseReviewInfos.length,
+          urgentCourses: courseReviewInfos.filter(c => c.urgencyLevel === 'HIGH').length,
+          normalCourses: courseReviewInfos.filter(c => c.urgencyLevel === 'NORMAL').length,
+          relaxedCourses: courseReviewInfos.filter(c => c.urgencyLevel === 'LOW').length
+        }
+      }
+    } as ApiResponse<any>)
+  } catch (error: any) {
+    console.error('Error getting daily review overview:', error)
+    res.status(500).json({
+      success: false,
+      error: '获取今日复习概览失败',
+      code: 'DAILY_REVIEW_OVERVIEW_FAILED'
     } as ApiResponse<undefined>)
   }
 })
