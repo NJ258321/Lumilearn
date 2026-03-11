@@ -17,7 +17,9 @@ export const AUDIO_TYPES = [
   'audio/wav',
   'audio/m4a',
   'audio/mp3',
-  'audio/x-m4a'
+  'audio/x-m4a',
+  'audio/webm',
+  'audio/ogg'
 ]
 
 /** 支持的图片类型 */

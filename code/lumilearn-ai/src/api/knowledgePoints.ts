@@ -17,6 +17,7 @@ export interface KnowledgePointListParams extends PaginationParams {
 export interface CreateKnowledgePointBody {
   chapterId: string  // 后端必填
   name: string
+  description?: string
   status?: string
   importance?: number
 }

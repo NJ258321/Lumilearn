@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, Square, Camera, Flag, Upload, ArrowLeft, ChevronDown, Play, Zap, Type, X, Search, Check, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { Course, Chapter } from '../types';
-import { MOCK_COURSES } from '../constants';
 import { getCourseList } from '../src/api/courses';
 import { getChapterList } from '../src/api/chapters';
 import { createStudyRecord } from '../src/api/studyRecords';
@@ -434,8 +433,8 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
     return `${m}:${s}`;
   };
 
-  // 过滤课程列表
-  const filteredCourses = MOCK_COURSES.filter(c => 
+  // 过滤课程列表 - 使用真实的 courses 状态
+  const filteredCourses = courses.filter(c =>
     c.name.toLowerCase().includes(searchText.toLowerCase())
   );
 

@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Play, Pause, ChevronLeft, ChevronRight, Share2, Lightbulb, Sparkles, Video, Flag, Camera, HelpCircle, X, Loader2 } from 'lucide-react';
-import { MOCK_TRANSCRIPT } from '../constants';
 import { AppView } from '../types';
 import TimeMarker from '../src/components/TimeMarker';
 import Timeline from '../src/components/Timeline';
@@ -52,10 +51,28 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
   const [panelHeight, setPanelHeight] = useState(INITIAL_PANEL_HEIGHT);
   const [isDraggingPanel, setIsDraggingPanel] = useState(false);
 
-  // 时间标记状态 - 使用传入的recordId或默认测试ID
+  // 时间标记状态 - recordId 为必填，如果没有则显示提示
   const [timeMarks, setTimeMarks] = useState<TimeMark[]>([]);
   const [marksLoading, setMarksLoading] = useState(false);
-  const studyRecordId = recordId || '550e8400-e29b-41d4-a716-446655440003';
+  const studyRecordId = recordId;
+
+  // 如果没有 recordId，显示空状态
+  if (!studyRecordId) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-[#F7F9FC]">
+        <div className="text-center p-8">
+          <Video size={48} className="text-slate-300 mx-auto mb-4" />
+          <p className="text-slate-500 font-medium">请先选择学习记录</p>
+          <button
+            onClick={onBack}
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium"
+          >
+            返回
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // 相关标记状态
   const [relatedMarks, setRelatedMarks] = useState<TimeMark[]>([]);
@@ -317,16 +334,31 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
     return () => clearInterval(interval);
   }, [isPlaying, playbackRate, duration]);
 
+  // 从学习记录中解析文字稿数据
+  const transcript = React.useMemo(() => {
+    if (!studyRecord?.notes) return [];
+    // 假设 notes 是按时间分割的文本，每行一个片段
+    // 格式：时间(秒) - 内容
+    const lines = studyRecord.notes.split('\n').filter(line => line.trim());
+    return lines.map((line, idx) => {
+      const match = line.match(/^(\d+)\s*[-–]\s*(.+)$/);
+      if (match) {
+        return { time: parseInt(match[1]), text: match[2], isKeypoint: idx % 3 === 0 };
+      }
+      return { time: idx * 10, text: line, isKeypoint: false };
+    });
+  }, [studyRecord?.notes]);
+
   useEffect(() => {
-    if (scrollRef.current) {
-        const index = MOCK_TRANSCRIPT.findIndex(s => s.time > currentTime);
-        const activeIndex = index === -1 ? MOCK_TRANSCRIPT.length - 1 : index - 1;
+    if (scrollRef.current && transcript.length > 0) {
+        const index = transcript.findIndex(s => s.time > currentTime);
+        const activeIndex = index === -1 ? transcript.length - 1 : index - 1;
         if (activeIndex >= 0) {
             const el = scrollRef.current.children[activeIndex] as HTMLElement;
             if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }
-  }, [currentTime]);
+  }, [currentTime, transcript]);
 
   const togglePlay = () => setIsPlaying(!isPlaying);
 
@@ -582,8 +614,8 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
                         </div>
                     </div>
                 </div>
-                {MOCK_TRANSCRIPT.map((seg, idx) => {
-                    const isActive = currentTime >= seg.time && (idx === MOCK_TRANSCRIPT.length - 1 || currentTime < MOCK_TRANSCRIPT[idx+1].time);
+                {(transcript.length > 0 ? transcript : []).map((seg: any, idx: number) => {
+                    const isActive = currentTime >= seg.time && (idx === transcript.length - 1 || currentTime < transcript[idx+1]?.time);
                     return (
                         <div key={idx} onClick={() => handleSeekTo(seg.time)} className={`mb-8 transition-all duration-500 cursor-pointer origin-left ${isActive ? 'opacity-100 scale-105' : 'opacity-20 grayscale'}`}>
                             <div className="flex items-start">

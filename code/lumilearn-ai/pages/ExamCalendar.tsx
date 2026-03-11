@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { ArrowLeft, ChevronLeft, ChevronRight, Calendar, Clock, BookOpen, Target, CheckCircle, Circle, AlertCircle, Flag, RefreshCw } from 'lucide-react'
-import { getReviewStatistics, getCourseReview, getTodayReview } from '../src/api/review'
+import { getReviewStatistics, getCourseReview, getTodayReview, generateReviewPlan } from '../src/api/review'
 import type { ReviewPlan, DailyReviewPlan, TodayReview, ReviewStatistics, CourseReview } from '../src/types/api'
 
 interface ExamCalendarProps {
@@ -57,11 +57,11 @@ const ExamCalendar: React.FC<ExamCalendarProps> = ({ onBack, courseId }) => {
         setTodayReview(todayRes.data)
       }
 
-      // 如果有课程ID，获取课程复习计划
+      // 生成复习计划（如果需要）
       if (courseId) {
-        const courseRes = await getCourseReview(courseId)
-        if (courseRes.success && courseRes.data) {
-          // 设置复习计划
+        const planRes = await generateReviewPlan(courseId, 3) // 生成3轮复习计划
+        if (planRes.success && planRes.data) {
+          setReviewPlans(planRes.data.plans || [])
         }
       }
     } catch (err) {
@@ -137,12 +137,8 @@ const ExamCalendar: React.FC<ExamCalendarProps> = ({ onBack, courseId }) => {
     }
   }
 
-  // 模拟数据（开发测试用）
-  const mockPlans: DailyReviewPlan[] = [
-    { date: '2026-03-09', items: [{ type: 'new', knowledgePointId: '1', knowledgePointName: '数组操作', reason: '新知识', priority: 'high', estimatedTime: 30 }], totalTime: 30 },
-    { date: '2026-03-10', items: [{ type: 'review', knowledgePointId: '2', knowledgePointName: '链表', reason: '复习', priority: 'medium', estimatedTime: 25 }], totalTime: 25 },
-    { date: '2026-03-11', items: [{ type: 'review', knowledgePointId: '3', knowledgePointName: '树结构', reason: '复习', priority: 'high', estimatedTime: 40 }], totalTime: 40 },
-  ]
+  // 复习计划数据（优先使用 API 返回的数据）
+  const displayPlans = reviewPlans.length > 0 ? reviewPlans : []
 
   // 渲染进度环形图
   const renderProgressRing = (progress: number, color: string, size: number = 80) => {
@@ -282,7 +278,7 @@ const ExamCalendar: React.FC<ExamCalendarProps> = ({ onBack, courseId }) => {
 
             {/* 复习计划列表 */}
             <div className="space-y-3">
-              {mockPlans.map((plan, index) => (
+              {displayPlans.map((plan, index) => (
                 <div
                   key={index}
                   className="p-3 bg-slate-50 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors"

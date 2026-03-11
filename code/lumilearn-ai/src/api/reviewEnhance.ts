@@ -34,7 +34,10 @@ export async function optimizeReview(
   data: OptimizeRequest
 ): Promise<ApiResponse<OptimizeResponse>> {
   try {
-    return await api.post<OptimizeResponse>(API_CONFIG.endpoints.reviewEnhance.optimize, data)
+    const endpoint = API_CONFIG.endpoints.reviewEnhance.optimize;
+    console.log('[optimizeReview] 请求端点:', endpoint);
+    console.log('[optimizeReview] 请求数据:', data);
+    return await api.post<OptimizeResponse>(endpoint, data)
   } catch (error) {
     console.error('[reviewEnhance] optimizeReview error:', error)
     return { success: false, error: '多学科优化失败' }

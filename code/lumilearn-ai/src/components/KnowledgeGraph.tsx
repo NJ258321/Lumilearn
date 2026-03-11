@@ -181,14 +181,14 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
 
     // 绘制边
     const link = g.append('g')
-      .selectAll('line')
+      .selectAll<SVGLineElement, GraphLink>('line')
       .data(links)
-      .join('line')
+      .join('line') as any
       .attr('stroke', '#cbd5e1')
       .attr('stroke-width', 2)
-      .attr('stroke-dasharray', d => d.relationType === 'RELATED' ? '5,5' : 'none')
+      .attr('stroke-dasharray', (d: GraphLink) => d.relationType === 'RELATED' ? '5,5' : 'none')
       .style('cursor', 'pointer')
-      .on('mouseenter', function(event, d) {
+      .on('mouseenter', function(event, d: GraphLink) {
         d3.select(this).attr('stroke', '#0ea5e9').attr('stroke-width', 3)
         setHoveredLink(d)
       })
@@ -199,56 +199,56 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
 
     // 绘制边标签
     const linkLabels = g.append('g')
-      .selectAll('text')
+      .selectAll<SVGTextElement, GraphLink>('text')
       .data(links)
-      .join('text')
+      .join('text') as any
       .attr('font-size', 10)
       .attr('fill', '#64748b')
       .attr('text-anchor', 'middle')
-      .text(d => getRelationTypeLabel(d.relationType))
+      .text((d: GraphLink) => getRelationTypeLabel(d.relationType))
       .style('opacity', 0)
       .style('pointer-events', 'none')
 
     // 绘制节点
     const node = g.append('g')
-      .selectAll('g')
+      .selectAll<SVGGElement, GraphNode>('g')
       .data(nodes)
-      .join('g')
+      .join('g') as any
       .style('cursor', 'pointer')
       .call(d3.drag<SVGGElement, GraphNode>()
         .on('start', dragstarted)
         .on('drag', dragged)
         .on('end', dragended))
-      .on('click', (event, d) => {
+      .on('click', (event, d: GraphNode) => {
         setSelectedNode(d)
         onNodeClick?.(d.id, d.name)
       })
 
     // 节点圆形背景
     node.append('circle')
-      .attr('r', d => d.type === 'root' ? 35 : 25)
-      .attr('fill', d => getNodeColor(d.status, d.type))
-      .attr('stroke', d => d.type === 'root' ? '#0284c7' : '#94a3b8')
+      .attr('r', (d: GraphNode) => d.type === 'root' ? 35 : 25)
+      .attr('fill', (d: GraphNode) => getNodeColor(d.status, d.type))
+      .attr('stroke', (d: GraphNode) => d.type === 'root' ? '#0284c7' : '#94a3b8')
       .attr('stroke-width', 2)
       .attr('filter', 'url(#shadow)')
 
     // 节点文字
     node.append('text')
       .attr('text-anchor', 'middle')
-      .attr('dy', d => d.type === 'root' ? 45 : 35)
-      .attr('font-size', d => d.type === 'root' ? 12 : 10)
+      .attr('dy', (d: GraphNode) => d.type === 'root' ? 45 : 35)
+      .attr('font-size', (d: GraphNode) => d.type === 'root' ? 12 : 10)
       .attr('fill', '#334155')
-      .text(d => d.name.length > 8 ? d.name.substring(0, 8) + '...' : d.name)
+      .text((d: GraphNode) => d.name.length > 8 ? d.name.substring(0, 8) + '...' : d.name)
 
     // 添加掌握度分数
-    node.filter(d => d.masteryScore !== undefined)
+    node.filter((d: GraphNode) => d.masteryScore !== undefined)
       .append('text')
       .attr('text-anchor', 'middle')
       .attr('dy', 5)
       .attr('font-size', 10)
       .attr('fill', 'white')
       .attr('font-weight', 'bold')
-      .text(d => `${d.masteryScore}%`)
+      .text((d: GraphNode) => `${d.masteryScore}%`)
 
     // 添加阴影滤镜
     const defs = svg.append('defs')
@@ -268,16 +268,16 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
     // 模拟tick更新位置
     simulation.on('tick', () => {
       link
-        .attr('x1', d => (d.source as GraphNode).x!)
-        .attr('y1', d => (d.source as GraphNode).y!)
-        .attr('x2', d => (d.target as GraphNode).x!)
-        .attr('y2', d => (d.target as GraphNode).y!)
+        .attr('x1', (d: GraphLink) => (d.source as GraphNode).x!)
+        .attr('y1', (d: GraphLink) => (d.source as GraphNode).y!)
+        .attr('x2', (d: GraphLink) => (d.target as GraphNode).x!)
+        .attr('y2', (d: GraphLink) => (d.target as GraphNode).y!)
 
       linkLabels
-        .attr('x', d => ((d.source as GraphNode).x! + (d.target as GraphNode).x!) / 2)
-        .attr('y', d => ((d.source as GraphNode).y! + (d.target as GraphNode).y!) / 2)
+        .attr('x', (d: GraphLink) => ((d.source as GraphNode).x! + (d.target as GraphNode).x!) / 2)
+        .attr('y', (d: GraphLink) => ((d.source as GraphNode).y! + (d.target as GraphNode).y!) / 2)
 
-      node.attr('transform', d => `translate(${d.x},${d.y})`)
+      node.attr('transform', (d: GraphNode) => `translate(${d.x},${d.y})`)
     })
 
     // 拖拽函数

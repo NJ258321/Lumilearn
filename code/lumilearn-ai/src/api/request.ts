@@ -10,6 +10,14 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000
 // 导入错误处理
 import { getErrorMessage, isNetworkError } from './errorMessages'
 
+// Token 存储 key
+const TOKEN_KEY = 'lumilearn_token'
+
+// 获取本地存储的 token
+function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY)
+}
+
 /**
  * API 客户端类
  * 统一处理所有 HTTP 请求、错误响应和状态码
@@ -29,14 +37,33 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`
+    console.log('[API Request] URL:', url, 'Method:', options.method || 'GET')
 
     try {
+      // 提取自定义 headers，移除内部的 _skipDefaultContentType 标记
+      const customHeaders = (options.headers as Record<string, string>) || {}
+      const skipDefaultContentType = (customHeaders as any)._skipDefaultContentType
+      const sanitizedHeaders = { ...customHeaders }
+      delete (sanitizedHeaders as any)._skipDefaultContentType
+
+      // 只有当没有明确设置 Content-Type 且不是跳过默认时才添加 JSON 头
+      const hasContentType = Object.keys(sanitizedHeaders).some(k => k.toLowerCase() === 'content-type')
+
+      // 获取 token 并添加到请求头
+      const token = getToken()
+      console.log('[API Request] Token:', token ? `${token.substring(0, 20)}...` : 'null')
+      const authHeaders: Record<string, string> = {}
+      if (token) {
+        authHeaders['Authorization'] = `Bearer ${token}`
+      }
+
+      const headers = hasContentType || skipDefaultContentType
+        ? { ...sanitizedHeaders, ...authHeaders }
+        : { ...sanitizedHeaders, 'Content-Type': 'application/json', ...authHeaders }
+
       const response = await fetch(url, {
         ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
+        headers,
       })
 
       const data = await response.json()
@@ -45,7 +72,8 @@ class ApiClient {
       if (!response.ok || !data.success) {
         // 尝试从响应中获取错误码
         const errorCode = data.code
-        const originalError = data.error
+        // 处理 error 可能是对象或字符串的情况
+        const originalError = typeof data.error === 'string' ? data.error : data.error?.message
         // 使用错误码映射转换为友好提示
         const friendlyError = getErrorMessage(errorCode, originalError)
 
@@ -103,7 +131,7 @@ class ApiClient {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: formData,
-      headers: {}, // 不设置 Content-Type，让浏览器自动处理
+      headers: { _skipDefaultContentType: true } as any, // 跳过默认的 JSON Content-Type，让浏览器自动处理 multipart/form-data
     })
   }
 
@@ -206,6 +234,7 @@ export const API_CONFIG = {
       complete: '/api/review',  // :knowledgePointId/complete
       statistics: '/api/review/statistics',
       course: '/api/review/course',  // :courseId
+      dailyReviewOverview: '/api/daily-review/overview',
     },
     // P4 - 数据分析
     analysis: {
