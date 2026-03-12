@@ -86,3 +86,50 @@ export async function getCourseReview(
     return { success: false, error: '获取课程复习计划失败' }
   }
 }
+
+// =====================================================
+// 今日安排 API
+// =====================================================
+
+export interface CourseReviewInfo {
+  courseId: string
+  courseName: string
+  courseStatus: 'STUDYING' | 'REVIEWING' | 'ARCHIVED'
+  examDate: string | null
+  daysUntilExam: number | null
+  totalChapters: number
+  reviewedChapters: number
+  reviewProgress: number
+  totalKnowledgePoints: number
+  masteredPoints: number
+  weakPoints: number
+  masteryRate: number
+  todayTasks: {
+    knowledgePoints: number
+    estimatedMinutes: number
+  }
+  urgencyLevel: 'HIGH' | 'NORMAL' | 'LOW'
+  urgencyReason: string
+}
+
+export interface DailyReviewOverviewResponse {
+  courses: CourseReviewInfo[]
+  summary: {
+    totalCourses: number
+    urgentCourses: number
+    normalCourses: number
+    relaxedCourses: number
+  }
+}
+
+/**
+ * 获取今日复习安排概览
+ */
+export async function getDailyReviewOverview(): Promise<ApiResponse<DailyReviewOverviewResponse>> {
+  try {
+    return await api.get<DailyReviewOverviewResponse>(API_CONFIG.endpoints.review.dailyReviewOverview)
+  } catch (error) {
+    console.error('[review] getDailyReviewOverview error:', error)
+    return { success: false, error: '获取今日复习安排失败' }
+  }
+}

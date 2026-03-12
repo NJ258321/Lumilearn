@@ -209,9 +209,13 @@ export interface TaskGroup {
   courseId: string;
   courseName: string;
   tag: string;
-  tagColor: 'red' | 'orange' | 'blue';
+  tagColor: 'red' | 'orange' | 'blue' | 'green' | 'purple' | 'pink';
   progress: string;
   tasks: Task[];
+  time?: string;      // 时间点，如 "09:00"
+  period?: string;    // 时段，如 "上午学习"
+  courseType?: 'PROFESSIONAL' | 'CROSS_MAJOR' | 'ELECTIVE';  // 课程类型
+  studyStatus?: 'reviewing' | 'learning' | 'completed';  // 学习状态
 }
 
 export interface Message {
