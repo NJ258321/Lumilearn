@@ -60,11 +60,7 @@ const corsOrigins = [
 ]
 
 app.use(cors({
-<<<<<<< HEAD
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3003', 'http://127.0.0.1:5173', 'http://127.0.0.1:3000', 'http://127.0.0.1:3003'],
-=======
   origin: corsOrigins,
->>>>>>> 4275942bedfbd19742565f0e1368a74390de1bc7
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
@@ -103,11 +99,7 @@ app.get('/api/time', (_req: Request, res: Response) => {
       date: now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }),
       time: now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
       dayOfWeek: now.toLocaleDateString('zh-CN', { weekday: 'long' }),
-<<<<<<< HEAD
-      timestamp: now.getTime()
-=======
       timestampMs: now.getTime()
->>>>>>> 4275942bedfbd19742565f0e1368a74390de1bc7
     }
   })
 })

@@ -49,11 +49,6 @@ class ApiClient {
       // 只有当没有明确设置 Content-Type 且不是跳过默认时才添加 JSON 头
       const hasContentType = Object.keys(sanitizedHeaders).some(k => k.toLowerCase() === 'content-type')
 
-<<<<<<< HEAD
-      const headers = hasContentType || skipDefaultContentType
-        ? sanitizedHeaders
-        : { ...sanitizedHeaders, 'Content-Type': 'application/json' }
-=======
       // 获取 token 并添加到请求头
       const token = getToken()
       console.log('[API Request] Token:', token ? `${token.substring(0, 20)}...` : 'null')
@@ -65,7 +60,6 @@ class ApiClient {
       const headers = hasContentType || skipDefaultContentType
         ? { ...sanitizedHeaders, ...authHeaders }
         : { ...sanitizedHeaders, 'Content-Type': 'application/json', ...authHeaders }
->>>>>>> 4275942bedfbd19742565f0e1368a74390de1bc7
 
       const response = await fetch(url, {
         ...options,
