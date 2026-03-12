@@ -1,0 +1,13 @@
+# IDE和编辑器配置
+.claude/
+.idea/
+.vscode/
+
+# 依赖文件夹
+node_modules/
+
+# 编译输出目录
+dist/
+
+# 环境变量文件
+.env

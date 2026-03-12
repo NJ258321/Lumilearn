@@ -10,25 +10,40 @@ const router = Router()
 // 默认偏好设置
 const DEFAULT_PREFERENCES = {
   learning: {
-    dailyGoal: 60,        // 每日学习目标（分钟）
-    weeklyGoal: 300,      // 每周学习目标（分钟）
+    dailyGoal: 120,       // 每日学习目标（分钟）
+    weeklyGoal: 600,      // 每周学习目标（分钟）
     targetGrade: 'B',     // 目标等级: S | A | B | C
     examDate: null        // 考试日期
   },
   notifications: {
-    studyReminder: true,  // 学习提醒
-    reviewReminder: true, // 复习提醒
-    examReminder: true,  // 考试提醒
-    reminderTime: '09:00' // 提醒时间
+    studyReminder: true,   // 学习提醒
+    reviewReminder: true,  // 复习提醒
+    examReminder: true,   // 考试提醒
+    reminderTime: '09:00'  // 提醒时间
   },
   ai: {
-    autoExplain: true,   // 自动解释
-    autoSuggest: true,   // 自动建议
-    difficulty: 'medium'  // 难度: easy | medium | hard
+    autoExplain: true,    // 自动解释
+    autoSuggest: true,    // 自动建议
+    difficulty: 'medium'   // 难度: easy | medium | hard
   },
   display: {
-    theme: 'light',      // 主题: light | dark | auto
+    theme: 'light',       // 主题: light | dark | auto
     language: 'zh-CN'     // 语言
+  },
+  schedule: {
+    enabled: true,        // 是否启用学习计划
+    morning: {
+      start: '09:00',   // 上午开始时间
+      end: '12:00'       // 上午结束时间
+    },
+    afternoon: {
+      start: '14:00',   // 下午开始时间
+      end: '18:00'       // 下午结束时间
+    },
+    evening: {
+      start: '19:00',   // 晚上开始时间
+      end: '21:00'       // 晚上结束时间
+    }
   }
 }
 
@@ -44,7 +59,14 @@ function parsePreferences(preferencesJson: string | null): any {
       learning: { ...DEFAULT_PREFERENCES.learning, ...parsed.learning },
       notifications: { ...DEFAULT_PREFERENCES.notifications, ...parsed.notifications },
       ai: { ...DEFAULT_PREFERENCES.ai, ...parsed.ai },
-      display: { ...DEFAULT_PREFERENCES.display, ...parsed.display }
+      display: { ...DEFAULT_PREFERENCES.display, ...parsed.display },
+      schedule: {
+        ...DEFAULT_PREFERENCES.schedule,
+        ...parsed.schedule,
+        morning: { ...DEFAULT_PREFERENCES.schedule.morning, ...(parsed.schedule?.morning || {}) },
+        afternoon: { ...DEFAULT_PREFERENCES.schedule.afternoon, ...(parsed.schedule?.afternoon || {}) },
+        evening: { ...DEFAULT_PREFERENCES.schedule.evening, ...(parsed.schedule?.evening || {}) }
+      }
     }
   } catch {
     return DEFAULT_PREFERENCES
@@ -127,6 +149,17 @@ router.put('/settings', [
   body('display').optional().isObject(),
   body('display.theme').optional().isIn(['light', 'dark', 'auto']),
   body('display.language').optional().isIn(['zh-CN', 'en']),
+  body('schedule').optional().isObject(),
+  body('schedule.enabled').optional().isBoolean(),
+  body('schedule.morning').optional().isObject(),
+  body('schedule.morning.start').optional().isString(),
+  body('schedule.morning.end').optional().isString(),
+  body('schedule.afternoon').optional().isObject(),
+  body('schedule.afternoon.start').optional().isString(),
+  body('schedule.afternoon.end').optional().isString(),
+  body('schedule.evening').optional().isObject(),
+  body('schedule.evening.start').optional().isString(),
+  body('schedule.evening.end').optional().isString(),
   validate
 ], async (req: Request, res: Response) => {
   try {
