@@ -429,11 +429,8 @@ router.get('/statistics/chapter/:chapterId/summary', [
 
 // ==================== GET /api/statistics/dashboard - 总体学习仪表盘 ====================
 
-router.get('/statistics/dashboard', async (req: Request, res: Response) => {
+router.get('/statistics/dashboard', async (_req: Request, res: Response) => {
   try {
-    // 获取用户ID
-    const userId = (req.query.userId as string) || null
-
     // 获取所有课程概览
     const courses = await prisma.course.findMany({
       include: {
@@ -469,8 +466,7 @@ router.get('/statistics/dashboard', async (req: Request, res: Response) => {
       }
     })
 
-    // 将秒转换为分钟
-    const weeklyStudyTimeMinutes = Math.round(recentStudyRecords.reduce((sum, r) => sum + r.duration, 0) / 60)
+    const weeklyStudyTime = recentStudyRecords.reduce((sum, r) => sum + r.duration, 0)
     const weeklyStudyDays = new Set(recentStudyRecords.map(r => r.date.toISOString().split('T')[0])).size
 
     // 获取错题统计
@@ -484,157 +480,6 @@ router.get('/statistics/dashboard', async (req: Request, res: Response) => {
     // 计算学习进度
     const overallProgress = totalKnowledgePoints > 0 ? Math.round((totalMastered / totalKnowledgePoints) * 100) : 0
 
-    // ==================== 今日统计数据 ====================
-    // 计算每日学习目标：根据用户设置的学习时间段
-    // 默认时间段：上午 09:00-12:00, 下午 14:00-18:00, 晚上 19:00-21:00
-    const DEFAULT_SCHEDULE = {
-      morning: { start: '09:00', end: '12:00' },
-      afternoon: { start: '14:00', end: '18:00' },
-      evening: { start: '19:00', end: '21:00' }
-    }
-
-    // 计算时间段的分钟数
-    const calculatePeriodMinutes = (start: string, end: string): number => {
-      const [startHour, startMin] = start.split(':').map(Number)
-      const [endHour, endMin] = end.split(':').map(Number)
-      return (endHour * 60 + endMin) - (startHour * 60 + startMin)
-    }
-
-    // 根据用户设置计算每日学习目标
-    let dailyGoal = 540 // 默认540分钟（9小时）
-    let userSchedule = DEFAULT_SCHEDULE
-
-    if (userId) {
-      try {
-        const user = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { preferences: true }
-        })
-        if (user?.preferences) {
-          const prefs = JSON.parse(user.preferences)
-          // 优先使用用户设置的 schedule
-          if (prefs.schedule?.enabled !== false) {
-            userSchedule = {
-              morning: prefs.schedule?.morning || DEFAULT_SCHEDULE.morning,
-              afternoon: prefs.schedule?.afternoon || DEFAULT_SCHEDULE.afternoon,
-              evening: prefs.schedule?.evening || DEFAULT_SCHEDULE.evening
-            }
-          }
-        }
-      } catch (e) {
-        // 使用默认值
-      }
-    }
-
-    // 计算总可用学习时间
-    const morningMinutes = calculatePeriodMinutes(userSchedule.morning.start, userSchedule.morning.end)
-    const afternoonMinutes = calculatePeriodMinutes(userSchedule.afternoon.start, userSchedule.afternoon.end)
-    const eveningMinutes = calculatePeriodMinutes(userSchedule.evening.start, userSchedule.evening.end)
-    dailyGoal = morningMinutes + afternoonMinutes + eveningMinutes
-
-    // 获取今日学习记录
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const tomorrow = new Date(today)
-    tomorrow.setDate(tomorrow.getDate() + 1)
-
-    const todayStudyRecords = await prisma.studyRecord.findMany({
-      where: {
-        date: {
-          gte: today,
-          lt: tomorrow
-        }
-      },
-      select: {
-        duration: true
-      }
-    })
-
-    // 将秒转换为分钟
-    const todayStudyTimeMinutes = Math.round(todayStudyRecords.reduce((sum, r) => sum + r.duration, 0) / 60)
-
-    // 获取今日复习任务完成情况
-    let todayTaskTotal = 0
-    let todayTaskCompleted = 0
-
-    const todayExamTasks = await prisma.examTask.findMany({
-      where: {
-        scheduledDate: {
-          gte: today,
-          lt: tomorrow
-        }
-      }
-    })
-
-    todayTaskTotal = todayExamTasks.length
-    todayTaskCompleted = todayExamTasks.filter(t => t.status === 'COMPLETED').length
-
-    // 计算今日任务完成进度
-    const todayProgress = todayTaskTotal > 0
-      ? Math.round((todayTaskCompleted / todayTaskTotal) * 100)
-      : 0
-
-    // ==================== 计算进度警告 ====================
-    // 使用用户设置的学习时间段计算时间进度
-    const now = new Date()
-
-    // 解析用户设置的时间段
-    const parseTime = (timeStr: string): number => {
-      const [hour, min] = timeStr.split(':').map(Number)
-      return hour * 60 + min
-    }
-
-    const morningStartMin = parseTime(userSchedule.morning.start)
-    const eveningEndMin = parseTime(userSchedule.evening.end)
-    const totalStudyMinutes = eveningEndMin - morningStartMin // 总学习时长（分钟）
-
-    // 计算当前时间在一天中的位置（从学习开始到现在经过的分钟数）
-    const currentMin = now.getHours() * 60 + now.getMinutes()
-    let elapsedMinutes = currentMin - morningStartMin
-
-    // 计算时间进度百分比
-    let timeProgress = 0
-    if (elapsedMinutes <= 0) {
-      // 学习还没开始
-      timeProgress = 0
-    } else if (elapsedMinutes >= totalStudyMinutes) {
-      // 学习时间已经结束
-      timeProgress = 100
-    } else {
-      timeProgress = Math.round((elapsedMinutes / totalStudyMinutes) * 100)
-    }
-
-    // 计算任务进度
-    const taskProgress = todayTaskTotal > 0
-      ? Math.round((todayTaskCompleted / todayTaskTotal) * 100)
-      : 0
-
-    // 计算滞后百分比（时间进度 - 任务进度）
-    const lagPercentage = timeProgress - taskProgress
-
-    // 确定警告等级和消息
-    let warningLevel: 'HIGH' | 'NORMAL' | 'LOW' = 'LOW'
-    let warningMessage = ''
-
-    if (lagPercentage > 20) {
-      warningLevel = 'HIGH'
-      warningMessage = `进度严重滞后！已落后 ${lagPercentage}%，请立即调整学习计划`
-    } else if (lagPercentage > 10) {
-      warningLevel = 'NORMAL'
-      warningMessage = `进度有些滞后，当前完成 ${taskProgress}%，建议调整`
-    }
-
-    // 构建警告对象
-    const progressWarning = lagPercentage > 10 ? {
-      level: warningLevel,
-      message: warningMessage,
-      lagPercentage,
-      completedTasks: todayTaskCompleted,
-      totalTasks: todayTaskTotal,
-      timeProgress,
-      taskProgress
-    } : null
-
     res.json({
       success: true,
       data: {
@@ -646,19 +491,10 @@ router.get('/statistics/dashboard', async (req: Request, res: Response) => {
           progress: overallProgress
         },
         weeklyStats: {
-          studyTime: weeklyStudyTimeMinutes,
+          studyTime: weeklyStudyTime,
           studyDays: weeklyStudyDays,
           mistakes: recentMistakes
         },
-        // 今日统计（studyTime单位：分钟）
-        todayStats: {
-          dailyGoal,
-          studyTime: todayStudyTimeMinutes,
-          taskTotal: todayTaskTotal,
-          taskCompleted: todayTaskCompleted,
-          progress: todayProgress
-        },
-        progressWarning,
         totalMistakes,
         recentStudyRecords: recentStudyRecords.slice(0, 5).map(r => ({
           date: r.date,

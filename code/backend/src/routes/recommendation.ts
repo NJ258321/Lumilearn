@@ -276,11 +276,15 @@ router.get('/recommendations/learning-path/:courseId', [
     })
 
     if (knowledgePoints.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: '该课程没有知识点',
-        code: 'NO_KNOWLEDGE_POINTS'
-      } as ApiResponse<undefined>)
+      return res.status(200).json({
+        success: true,
+        data: {
+          path: [],
+          totalPoints: 0,
+          estimatedTime: 0,
+          reason: '该课程暂无知识点'
+        }
+      } as ApiResponse<any>)
     }
 
     // 获取所有前置关系

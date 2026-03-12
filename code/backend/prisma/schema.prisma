@@ -93,6 +93,7 @@ model StudyRecord {
   duration  Int // 秒
   status    String   @default("RECORDING") // RECORDING | PROCESSING | COMPLETED | FAILED
   notes     String   @default("")
+  imageUrls String   @default("[]") // JSON array of image URLs
   createdAt DateTime @default(now())
 
   course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)

@@ -72,6 +72,144 @@ router.get('/', [
   }
 })
 
+// GET /api/mistakes/weak-points - 获取薄弱知识点（基于错题统计）
+router.get('/weak-points', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { courseId } = req.query
+
+    // Group mistakes by knowledge point and count
+    const whereClause: Record<string, unknown> = {}
+    if (courseId) {
+      whereClause.courseId = courseId as string
+    }
+
+    const weakPointsData = await prisma.mistake.groupBy({
+      by: ['knowledgePointId'],
+      where: whereClause,
+      _count: {
+        id: true
+      },
+      orderBy: {
+        _count: {
+          id: 'desc'
+        }
+      },
+      take: 20
+    })
+
+    // Get knowledge point details for each weak point
+    const knowledgePointIds = weakPointsData.map(wp => wp.knowledgePointId)
+
+    const knowledgePoints = await prisma.knowledgePoint.findMany({
+      where: {
+        id: { in: knowledgePointIds }
+      },
+      include: {
+        chapter: {
+          include: {
+            course: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          }
+        },
+        _count: {
+          select: {
+            mistakes: true
+          }
+        }
+      }
+    })
+
+    // Create a map for quick lookup
+    const mistakeCountMap = new Map(
+      weakPointsData.map(wp => [wp.knowledgePointId, wp._count.id])
+    )
+
+    // Also get knowledge points with low mastery score (filtered by courseId if provided)
+    const lowMasteryWhereClause: Record<string, unknown> = {
+      masteryScore: { lt: 50 }
+    }
+    if (courseId) {
+      lowMasteryWhereClause.chapter = {
+        courseId: courseId as string
+      }
+    }
+    const lowMasteryPoints = await prisma.knowledgePoint.findMany({
+      where: lowMasteryWhereClause,
+      include: {
+        chapter: {
+          include: {
+            course: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          }
+        },
+        _count: {
+          select: {
+            mistakes: true
+          }
+        }
+      },
+      orderBy: {
+        masteryScore: 'asc'
+      },
+      take: 20
+    })
+
+    // Combine and deduplicate
+    const combinedWeakPoints = [...knowledgePoints]
+    const existingIds = new Set(combinedWeakPoints.map(kp => kp.id))
+
+    for (const kp of lowMasteryPoints) {
+      if (!existingIds.has(kp.id)) {
+        combinedWeakPoints.push(kp)
+      }
+    }
+
+    // Sort by mistake count (desc) then mastery score (asc)
+    combinedWeakPoints.sort((a, b) => {
+      const aMistakes = a._count.mistakes
+      const bMistakes = b._count.mistakes
+      if (aMistakes !== bMistakes) return bMistakes - aMistakes
+      return a.masteryScore - b.masteryScore
+    })
+
+    // Limit to top 20 and format result
+    const result = combinedWeakPoints.slice(0, 20).map(kp => ({
+      id: kp.id,
+      name: kp.name,
+      status: kp.status,
+      masteryScore: kp.masteryScore,
+      mistakeCount: mistakeCountMap.get(kp.id) ?? kp._count.mistakes,
+      chapter: {
+        id: kp.chapter.id,
+        name: kp.chapter.name
+      },
+      course: {
+        id: kp.chapter.course.id,
+        name: kp.chapter.course.name
+      }
+    }))
+
+    res.json({
+      success: true,
+      data: result
+    })
+  } catch (error) {
+    console.error('Error fetching weak points:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch weak points'
+    })
+  }
+})
+
 // GET /api/mistakes/:id - 获取单个错题详情
 router.get('/:id', [
   param('id').isUUID(),
@@ -246,138 +384,6 @@ router.delete('/:id', [
     res.status(500).json({
       success: false,
       error: 'Failed to delete mistake'
-    })
-  }
-})
-
-// GET /api/mistakes/weak-points - 获取薄弱知识点（基于错题统计）
-router.get('/weak-points', [], async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { courseId } = req.query
-
-    // Group mistakes by knowledge point and count
-    const whereClause: Record<string, unknown> = {}
-    if (courseId) {
-      whereClause.courseId = courseId as string
-    }
-
-    const weakPointsData = await prisma.mistake.groupBy({
-      by: ['knowledgePointId'],
-      where: whereClause,
-      _count: {
-        id: true
-      },
-      orderBy: {
-        _count: {
-          id: 'desc'
-        }
-      },
-      take: 20
-    })
-
-    // Get knowledge point details for each weak point
-    const knowledgePointIds = weakPointsData.map(wp => wp.knowledgePointId)
-
-    const knowledgePoints = await prisma.knowledgePoint.findMany({
-      where: {
-        id: { in: knowledgePointIds }
-      },
-      include: {
-        chapter: {
-          include: {
-            course: {
-              select: {
-                id: true,
-                name: true
-              }
-            }
-          }
-        },
-        _count: {
-          select: {
-            mistakes: true
-          }
-        }
-      }
-    })
-
-    // Create a map for quick lookup
-    const mistakeCountMap = new Map(
-      weakPointsData.map(wp => [wp.knowledgePointId, wp._count.id])
-    )
-
-    // Also get knowledge points with low mastery score
-    const lowMasteryPoints = await prisma.knowledgePoint.findMany({
-      where: {
-        masteryScore: { lt: 50 }
-      },
-      include: {
-        chapter: {
-          include: {
-            course: {
-              select: {
-                id: true,
-                name: true
-              }
-            }
-          }
-        },
-        _count: {
-          select: {
-            mistakes: true
-          }
-        }
-      },
-      orderBy: {
-        masteryScore: 'asc'
-      },
-      take: 20
-    })
-
-    // Combine and deduplicate
-    const combinedWeakPoints = [...knowledgePoints]
-    const existingIds = new Set(combinedWeakPoints.map(kp => kp.id))
-
-    for (const kp of lowMasteryPoints) {
-      if (!existingIds.has(kp.id)) {
-        combinedWeakPoints.push(kp)
-      }
-    }
-
-    // Sort by mistake count (desc) then mastery score (asc)
-    combinedWeakPoints.sort((a, b) => {
-      const aMistakes = a._count.mistakes
-      const bMistakes = b._count.mistakes
-      if (aMistakes !== bMistakes) return bMistakes - aMistakes
-      return a.masteryScore - b.masteryScore
-    })
-
-    // Limit to top 20 and format result
-    const result = combinedWeakPoints.slice(0, 20).map(kp => ({
-      id: kp.id,
-      name: kp.name,
-      status: kp.status,
-      masteryScore: kp.masteryScore,
-      mistakeCount: mistakeCountMap.get(kp.id) ?? kp._count.mistakes,
-      chapter: {
-        id: kp.chapter.id,
-        name: kp.chapter.name
-      },
-      course: {
-        id: kp.chapter.course.id,
-        name: kp.chapter.course.name
-      }
-    }))
-
-    res.json({
-      success: true,
-      data: result
-    })
-  } catch (error) {
-    console.error('Error fetching weak points:', error)
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch weak points'
     })
   }
 })
