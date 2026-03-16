@@ -3,7 +3,7 @@ import { body, param, query } from 'express-validator'
 import { validate } from '../middleware/validator.js'
 import type { ApiResponse } from '../types/index.js'
 import prisma from '../lib/prisma.js'
-import geminiService from '../services/gemini.js'
+import minimaxService from '../services/minimax.js'
 
 const router = Router()
 
@@ -11,7 +11,7 @@ const router = Router()
 
 router.get('/ai/status', async (_req: Request, res: Response) => {
   try {
-    const status = geminiService.getStatus()
+    const status = minimaxService.getStatus()
 
     res.json({
       success: true,
@@ -96,7 +96,7 @@ router.post('/ai/explain', [
     }
 
     // 调用 AI 服务生成解释
-    const explanation = await geminiService.explainKnowledgePoint({
+    const explanation = await minimaxService.explainKnowledgePoint({
       knowledgePoint: {
         name: knowledgePoint.name,
         chapterName: knowledgePoint.chapter.name,
@@ -213,7 +213,7 @@ router.post('/ai/suggest', [
     })
 
     // 调用 AI 服务生成建议
-    const suggestion = await geminiService.generateSuggestion({
+    const suggestion = await minimaxService.generateSuggestion({
       courseName: course.name,
       targetGrade,
       daysUntilExam,
@@ -323,7 +323,7 @@ router.post('/ai/analyze-weak-points', [
 
     if (analyzeDepth === 'comprehensive') {
       // 调用 AI 进行深入分析
-      const analysis = await geminiService.analyzeWeakPoints({
+      const analysis = await minimaxService.analyzeWeakPoints({
         courseId,
         courseName: course.name,
         knowledgePoints: analyzedPoints.slice(0, 20) // 限制数量
@@ -443,7 +443,7 @@ router.post('/ai/search-resources', [
     }
 
     // 调用 AI 服务搜索资源
-    const resources = await geminiService.searchResources({
+    const resources = await minimaxService.searchResources({
       knowledgePointName: `${knowledgePoint.chapter.course.name} - ${knowledgePoint.name}`,
       resourceTypes,
       language,
@@ -641,10 +641,12 @@ router.post('/ai/chat', [
     const { message, systemInstruction } = req.body
 
     // 调用 AI 服务
-    const response = await geminiService.chat(message, {
-      messages: [{ role: 'user', content: message }],
-      systemInstruction: systemInstruction || '你是一位学习助手，请用中文回答用户的问题。'
-    })
+    const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = []
+    if (systemInstruction) {
+      messages.push({ role: 'system', content: systemInstruction })
+    }
+    messages.push({ role: 'user', content: message })
+    const response = await minimaxService.chat(messages)
 
     res.json({
       success: true,

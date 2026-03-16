@@ -5,6 +5,7 @@ import type { ApiResponse } from '../types/index.js'
 import prisma from '../lib/prisma.js'
 import { getUserIdFromRequest } from './auth.js'
 import { v4 as uuidv4 } from 'uuid'
+import minimaxService from '../services/minimax.js'
 
 const router = Router()
 
@@ -235,6 +236,174 @@ router.post('/generate', [
       success: false,
       error: '生成试卷失败',
       code: 'GENERATE_EXAM_FAILED'
+    } as ApiResponse<undefined>)
+  }
+})
+
+/**
+ * POST /api/exams/ai-generate
+ * AI智能生成题目（使用 Minimax）
+ */
+router.post('/ai-generate', [
+  body('courseId').isUUID().withMessage('课程ID必须是有效的UUID'),
+  body('questionCount').isInt({ min: 1, max: 50 }).withMessage('题目数量必须在1-50之间'),
+  body('questionType').optional().isIn(['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TRUE_FALSE', 'MIXED']).withMessage('题目类型无效'),
+  body('difficulty').optional().isInt({ min: 1, max: 5 }).withMessage('难度必须在1-5之间'),
+  validate
+], async (req: Request, res: Response) => {
+  try {
+    const userId = getUserIdFromRequest(req)
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: '未登录，无法生成题目',
+        code: 'NOT_AUTHENTICATED'
+      } as ApiResponse<undefined>)
+    }
+
+    const { courseId, questionCount = 10, questionType = 'SINGLE_CHOICE', difficulty = 3 } = req.body
+
+    // 验证课程存在
+    const course = await prisma.course.findUnique({
+      where: { id: courseId },
+      include: {
+        chapters: {
+          include: {
+            knowledgePoints: {
+              select: { name: true }
+            }
+          }
+        }
+      }
+    })
+
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        error: '课程不存在',
+        code: 'COURSE_NOT_FOUND'
+      } as ApiResponse<undefined>)
+    }
+
+    // 检查 Minimax API 是否配置
+    if (!minimaxService.isConfigured()) {
+      return res.status(503).json({
+        success: false,
+        error: 'AI服务未配置，请联系管理员',
+        code: 'AI_SERVICE_NOT_CONFIGURED'
+      } as ApiResponse<undefined>)
+    }
+
+    // 获取知识点列表
+    const knowledgePoints = course.chapters.flatMap(ch => ch.knowledgePoints.map(kp => kp.name))
+
+    if (knowledgePoints.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: '该课程下没有知识点，请先添加知识点',
+        code: 'NO_KNOWLEDGE_POINTS'
+      } as ApiResponse<undefined>)
+    }
+
+    // 决定题目类型
+    const types = questionType === 'MIXED'
+      ? ['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TRUE_FALSE']
+      : [questionType]
+
+    // 调用 Minimax 生成题目（内部已处理失败情况，会返回模拟数据）
+    const generatedQuestions = await minimaxService.generateQuestions({
+      courseName: course.name,
+      knowledgePoints,
+      difficulty,
+      questionType: types[0] as any,
+      count: questionCount
+    })
+
+    // 保存生成的题目到数据库
+    const savedQuestions = []
+    for (const q of generatedQuestions) {
+      try {
+        // 获取对应的知识点
+        const kp = await prisma.knowledgePoint.findFirst({
+          where: {
+            chapter: { courseId },
+            name: q.knowledgePoint || knowledgePoints[0]
+          }
+        })
+
+        // 清理 content 中的特殊字符
+        const cleanContent = (q.content || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+
+        const question = await prisma.question.create({
+          data: {
+            courseId,
+            type: q.options && Object.keys(q.options).length > 2 ? 'SINGLE_CHOICE' : (questionType === 'TRUE_FALSE' ? 'TRUE_FALSE' : 'SINGLE_CHOICE'),
+            content: cleanContent,
+            options: JSON.stringify(q.options || {}),
+            answer: q.correctAnswer,
+            explanation: q.explanation,
+            difficulty: q.difficulty,
+            score: 5,
+            status: 'ACTIVE',
+            knowledgePointId: kp?.id || null,
+            tags: JSON.stringify([course.name])
+          }
+        })
+
+        savedQuestions.push(question)
+      } catch (saveError: any) {
+        console.error('[AI Generate] Error saving question:', saveError.message);
+        console.error('[AI Generate] Question data:', JSON.stringify(q).substring(0, 500));
+      }
+    }
+
+    // 格式化返回题目
+    const formattedQuestions = savedQuestions.map(q => {
+      try {
+        return {
+          id: q.id,
+          type: q.type,
+          content: q.content,
+          options: q.options ? JSON.parse(q.options) : null,
+          difficulty: q.difficulty,
+          score: q.score,
+          knowledgePointId: q.knowledgePointId,
+          explanation: q.explanation
+        };
+      } catch (parseError: any) {
+        console.error('[AI Generate] Error parsing options:', parseError.message);
+        console.error('[AI Generate] Raw options:', q.options);
+        return {
+          id: q.id,
+          type: q.type,
+          content: q.content,
+          options: null,
+          difficulty: q.difficulty,
+          score: q.score,
+          knowledgePointId: q.knowledgePointId,
+          explanation: q.explanation
+        };
+      }
+    })
+
+    res.status(201).json({
+      success: true,
+      data: {
+        courseId,
+        courseName: course.name,
+        questions: formattedQuestions,
+        totalQuestions: formattedQuestions.length,
+        generatedAt: new Date().toISOString(),
+        source: 'AI_GENERATED'
+      }
+    } as ApiResponse<any>)
+  } catch (error: any) {
+    console.error('Error generating questions with AI:', error)
+    res.status(500).json({
+      success: false,
+      error: error.message || 'AI生成题目失败',
+      code: 'AI_GENERATE_FAILED'
     } as ApiResponse<undefined>)
   }
 })
@@ -486,21 +655,14 @@ router.post('/:sessionId/answers', [
   validate
 ], async (req: Request, res: Response) => {
   try {
-    const userId = getUserIdFromRequest(req)
     const { sessionId } = req.params
     const { questionId, userAnswer, timeSpent } = req.body
 
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        error: '未登录',
-        code: 'NOT_AUTHENTICATED'
-      } as ApiResponse<undefined>)
-    }
-
     // 查找考试会话
     const session = await prisma.examSession.findFirst({
-      where: { id: sessionId, userId }
+      where: {
+        id: sessionId
+      }
     })
 
     if (!session) {
@@ -535,13 +697,21 @@ router.post('/:sessionId/answers', [
     // 验证答案
     let isCorrect = false
     try {
-      const correctAnswer = JSON.parse(question.answer)
+      // 尝试解析答案，支持两种格式：1. JSON格式 {"correct": "A"}  2. 字符串格式 "A"
+      let correctAnswerStr: string
+      try {
+        const parsed = JSON.parse(question.answer)
+        correctAnswerStr = typeof parsed === 'object' ? parsed.correct : parsed
+      } catch {
+        // 如果解析失败，直接使用原始字符串
+        correctAnswerStr = question.answer
+      }
 
       if (question.type === 'SINGLE_CHOICE' || question.type === 'TRUE_FALSE') {
-        isCorrect = userAnswer === correctAnswer.correct
+        isCorrect = userAnswer === correctAnswerStr
       } else if (question.type === 'MULTIPLE_CHOICE') {
         const userAnswers = Array.isArray(userAnswer) ? userAnswer : [userAnswer]
-        const correctAnswers = correctAnswer.correct || []
+        const correctAnswers = Array.isArray(correctAnswerStr) ? correctAnswerStr : [correctAnswerStr]
         isCorrect = userAnswers.length === correctAnswers.length &&
           userAnswers.every((a: string) => correctAnswers.includes(a))
       } else {
@@ -552,16 +722,19 @@ router.post('/:sessionId/answers', [
       console.error('Error parsing answer:', e)
     }
 
-    // 创建答题记录
+    // 创建答题记录（不关联用户）
+    console.log('Creating answer record:', { questionId, examSessionId: sessionId, userAnswer, isCorrect })
     const answerRecord = await prisma.answerRecord.create({
       data: {
-        userId,
         questionId,
         examSessionId: sessionId,
         userAnswer: typeof userAnswer === 'string' ? userAnswer : JSON.stringify(userAnswer),
         isCorrect,
         timeSpent: timeSpent || null
       }
+    }).catch(err => {
+      console.error('Error creating answer record:', err)
+      throw err
     })
 
     // 更新题目的使用次数和正确率
@@ -596,14 +769,53 @@ router.post('/:sessionId/answers', [
       }
     })
 
+    // 调用 AI 分析答题情况
+    let aiAnalysis: string | null = null;
+    try {
+      // 安全解析 options
+      let parsedOptions: Record<string, string> | undefined;
+      if (question.options) {
+        try {
+          parsedOptions = typeof question.options === 'string' ? JSON.parse(question.options) : question.options;
+        } catch (e) {
+          console.error('Failed to parse question options:', e);
+          parsedOptions = undefined;
+        }
+      }
+
+      const analysisResult = await minimaxService.analyzeAnswer({
+        question: {
+          content: question.content,
+          type: question.type,
+          options: parsedOptions,
+          answer: question.answer,
+          explanation: question.explanation || undefined
+        },
+        userAnswer: userAnswer as string,
+        isCorrect
+      });
+      aiAnalysis = analysisResult.analysis;
+
+      // 更新答题记录的 AI 分析
+      await prisma.answerRecord.update({
+        where: { id: answerRecord.id },
+        data: {
+          aiAnalysis: analysisResult.analysis,
+          suggestedReview: analysisResult.suggestions.join(';')
+        }
+      });
+    } catch (err) {
+      console.error('Error generating AI analysis:', err);
+    }
+
     res.status(201).json({
       success: true,
       data: {
         isCorrect,
-        correctAnswer: question.answer ? JSON.parse(question.answer) : null,
+        correctAnswer: question.answer,
         explanation: question.explanation,
         score: isCorrect ? question.score : 0,
-        aiAnalysis: null,
+        aiAnalysis,
         answerRecordId: answerRecord.id
       }
     } as ApiResponse<any>)
@@ -626,20 +838,13 @@ router.post('/:sessionId/submit', [
   validate
 ], async (req: Request, res: Response) => {
   try {
-    const userId = getUserIdFromRequest(req)
     const { sessionId } = req.params
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        error: '未登录',
-        code: 'NOT_AUTHENTICATED'
-      } as ApiResponse<undefined>)
-    }
 
     // 查找考试会话
     const session = await prisma.examSession.findFirst({
-      where: { id: sessionId, userId },
+      where: {
+        id: sessionId
+      },
       include: {
         answerRecords: true
       }
@@ -1079,7 +1284,7 @@ router.post('/challenge', [
     res.status(201).json({
       success: true,
       data: {
-        sessionId: challengeSession.id,
+        id: challengeSession.id,
         mode,
         title: challengeSession.title,
         questions: formattedQuestions,
@@ -1139,35 +1344,28 @@ function getModeDescription(mode: string): string {
  */
 router.post('/sessions', [
   body('type').isIn(['MOCK_EXAM', 'PRACTICE', 'RANDOM_TEST', 'AI_GENERATED']).withMessage('考试类型无效'),
-  body('courseId').isUUID().withMessage('课程ID必须是有效的UUID'),
+  body('courseId').optional().isUUID().withMessage('课程ID必须是有效的UUID'),
   body('title').notEmpty().withMessage('标题不能为空'),
   body('questionIds').isArray({ min: 1 }).withMessage('题目ID列表不能为空'),
   validate
 ], async (req: Request, res: Response) => {
   try {
-    const userId = getUserIdFromRequest(req)
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        error: '未登录',
-        code: 'NOT_AUTHENTICATED'
-      } as ApiResponse<undefined>)
-    }
-
+    // 不再需要用户，直接创建会话
     const { type, courseId, title, description, questionIds } = req.body
 
-    // 验证课程存在
-    const course = await prisma.course.findUnique({
-      where: { id: courseId }
-    })
-
-    if (!course) {
-      return res.status(404).json({
-        success: false,
-        error: '课程不存在',
-        code: 'COURSE_NOT_FOUND'
-      } as ApiResponse<undefined>)
+    // 验证课程存在（如果提供了有效的 courseId）
+    let validCourseId: string | null = null
+    if (courseId) {
+      try {
+        const course = await prisma.course.findUnique({
+          where: { id: courseId }
+        })
+        if (course) {
+          validCourseId = courseId
+        }
+      } catch (e) {
+        // courseId 无效，忽略
+      }
     }
 
     // 验证题目存在
@@ -1189,11 +1387,10 @@ router.post('/sessions', [
     // 计算总分
     const totalScore = questions.reduce((sum, q) => sum + (q.score || 10), 0)
 
-    // 创建考试会话
+    // 创建考试会话（不关联用户）
     const session = await prisma.examSession.create({
       data: {
-        userId,
-        courseId,
+        courseId: validCourseId,
         type,
         title,
         description: description || '',
@@ -1218,7 +1415,7 @@ router.post('/sessions', [
     res.status(201).json({
       success: true,
       data: {
-        sessionId: session.id,
+        id: session.id,
         title: session.title,
         description: session.description,
         type: session.type,
@@ -1233,8 +1430,9 @@ router.post('/sessions', [
     console.error('Error creating exam session:', error)
     res.status(500).json({
       success: false,
-      error: '创建考试会话失败',
-      code: 'CREATE_SESSION_FAILED'
+      error: '创建考试会话失败: ' + (error.message || error.toString()),
+      code: 'CREATE_SESSION_FAILED',
+      details: error.stack
     } as ApiResponse<undefined>)
   }
 })
@@ -1794,7 +1992,7 @@ router.post('/mistakes/retry', [
     res.status(201).json({
       success: true,
       data: {
-        sessionId: session.id,
+        id: session.id,
         title: session.title,
         questions: formattedQuestions,
         totalQuestions: selectedQuestions.length,
@@ -1986,7 +2184,7 @@ router.post('/personalized-practice', [
       return res.status(201).json({
         success: true,
         data: {
-          sessionId: session.id,
+          id: session.id,
           title: session.title,
           questions: selected.map(q => ({
             id: q.id,
@@ -2036,7 +2234,7 @@ router.post('/personalized-practice', [
     res.status(201).json({
       success: true,
       data: {
-        sessionId: session.id,
+        id: session.id,
         title: session.title,
         description: session.description,
         questions: selectedQuestions.map(q => ({
@@ -2081,19 +2279,10 @@ router.get('/session/:id', [
   validate
 ], async (req: Request, res: Response) => {
   try {
-    const userId = getUserIdFromRequest(req)
     const { id } = req.params
 
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        error: '未登录',
-        code: 'NOT_AUTHENTICATED'
-      } as ApiResponse<undefined>)
-    }
-
     const session = await prisma.examSession.findFirst({
-      where: { id, userId },
+      where: { id },
       include: {
         course: {
           select: { id: true, name: true }
@@ -2142,19 +2331,35 @@ router.get('/session/:id', [
         startedAt: session.startedAt,
         completedAt: session.completedAt,
         course: session.course,
-        answers: session.answerRecords.map(ar => ({
-          questionId: ar.questionId,
-          userAnswer: ar.userAnswer,
-          isCorrect: ar.isCorrect,
-          timeSpent: ar.timeSpent,
-          question: ar.question ? {
-            content: ar.question.content,
-            options: ar.question.options ? JSON.parse(ar.question.options) : null,
-            answer: ar.question.answer ? JSON.parse(ar.question.answer) : null,
-            explanation: ar.question.explanation,
-            score: ar.question.score
-          } : null
-        }))
+        answers: session.answerRecords.map(ar => {
+          // 安全解析 JSON 字段
+          let parsedOptions: any = null;
+          let parsedAnswer: any = null;
+          try {
+            if (ar.question?.options) {
+              parsedOptions = JSON.parse(ar.question.options);
+            }
+            if (ar.question?.answer) {
+              parsedAnswer = JSON.parse(ar.question.answer);
+            }
+          } catch (e) {
+            console.error('Failed to parse question JSON:', e);
+          }
+
+          return {
+            questionId: ar.questionId,
+            userAnswer: ar.userAnswer,
+            isCorrect: ar.isCorrect,
+            timeSpent: ar.timeSpent,
+            question: ar.question ? {
+              content: ar.question.content,
+              options: parsedOptions,
+              answer: parsedAnswer,
+              explanation: ar.question.explanation,
+              score: ar.question.score
+            } : null
+          };
+        })
       }
     } as ApiResponse<any>)
   } catch (error: any) {
@@ -2176,19 +2381,10 @@ router.delete('/session/:id', [
   validate
 ], async (req: Request, res: Response) => {
   try {
-    const userId = getUserIdFromRequest(req)
     const { id } = req.params
 
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        error: '未登录',
-        code: 'NOT_AUTHENTICATED'
-      } as ApiResponse<undefined>)
-    }
-
-    const session = await prisma.examSession.findFirst({
-      where: { id, userId }
+    const session = await prisma.examSession.findUnique({
+      where: { id }
     })
 
     if (!session) {

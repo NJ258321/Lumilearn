@@ -206,7 +206,40 @@ export async function getMistakes(
     const url = knowledgePointId
       ? `${API_CONFIG.endpoints.exams.mistakes}?knowledgePointId=${knowledgePointId}`
       : API_CONFIG.endpoints.exams.mistakes;
-    return await api.get<MistakesResponse>(url);
+
+    const response = await api.get<any>(url);
+
+    if (!response.success || !response.data) {
+      return response;
+    }
+
+    // 转换后端数据为前端期望的格式
+    const mistakes = (Array.isArray(response.data) ? response.data : response.data.mistakes || []).map((item: any) => ({
+      questionId: item.id,
+      content: item.question,
+      options: item.options ? JSON.parse(item.options) : undefined,
+      userAnswer: item.userAnswer,
+      correctAnswer: item.correctAnswer,
+      reason: item.reason,
+      wrongCount: 1,
+      lastAnsweredAt: item.createdAt,
+      knowledgePointId: item.knowledgePointId,
+      knowledgePointName: item.knowledgePoint?.name,
+    }));
+
+    const statistics = {
+      total: mistakes.length,
+      reviewed: 0,
+      notReviewed: mistakes.length,
+    };
+
+    return {
+      success: true,
+      data: {
+        mistakes,
+        statistics,
+      },
+    };
   } catch (error) {
     console.error('[exams] getMistakes error:', error);
     return { success: false, error: '获取错题本失败' };
@@ -228,6 +261,50 @@ export async function retryMistakes(
   }
 }
 
+// 创建错题记录
+export interface CreateMistakeRequest {
+  courseId: string;
+  knowledgePointId: string;
+  question: string;
+  options?: Record<string, string>[];
+  userAnswer: string;
+  correctAnswer: string;
+  reason?: string;
+}
+
+export interface Mistake {
+  id: string;
+  courseId: string;
+  knowledgePointId: string;
+  question: string;
+  userAnswer: string;
+  correctAnswer: string;
+  reason?: string;
+  createdAt: string;
+  course: {
+    id: string;
+    name: string;
+  };
+  knowledgePoint: {
+    id: string;
+    name: string;
+  };
+}
+
+export async function createMistake(
+  data: CreateMistakeRequest
+): Promise<ApiResponse<Mistake>> {
+  try {
+    return await api.post<Mistake>(
+      API_CONFIG.endpoints.exams.createMistake,
+      data
+    );
+  } catch (error) {
+    console.error('[exams] createMistake error:', error);
+    return { success: false, error: '记录错题失败' };
+  }
+}
+
 // 个性化练习
 export async function getPersonalizedPractice(
   data: PersonalizedPracticeRequest
@@ -240,5 +317,38 @@ export async function getPersonalizedPractice(
   } catch (error) {
     console.error('[exams] getPersonalizedPractice error:', error);
     return { success: false, error: '获取个性化练习失败' };
+  }
+}
+
+// AI智能生成题目请求
+export interface AIGenerateQuestionsRequest {
+  courseId: string;
+  questionCount?: number;
+  questionType?: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'MIXED';
+  difficulty?: number;
+}
+
+// AI智能生成题目响应
+export interface AIGenerateQuestionsResponse {
+  courseId: string;
+  courseName: string;
+  questions: Question[];
+  totalQuestions: number;
+  generatedAt: string;
+  source: string;
+}
+
+// AI智能生成题目
+export async function generateAIQuestions(
+  data: AIGenerateQuestionsRequest
+): Promise<ApiResponse<AIGenerateQuestionsResponse>> {
+  try {
+    return await api.post<AIGenerateQuestionsResponse>(
+      API_CONFIG.endpoints.exams.aiGenerate,
+      data
+    );
+  } catch (error) {
+    console.error('[exams] generateAIQuestions error:', error);
+    return { success: false, error: 'AI生成题目失败' };
   }
 }

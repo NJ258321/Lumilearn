@@ -272,11 +272,12 @@ router.post('/', [
   body('question').trim().notEmpty().withMessage('Question is required'),
   body('userAnswer').trim().notEmpty().withMessage('User answer is required'),
   body('correctAnswer').trim().notEmpty().withMessage('Correct answer is required'),
+  body('options').optional().isObject(),
   body('reason').optional().isString(),
   validate
 ], async (req: Request, res: Response): Promise<void> => {
   try {
-    const { courseId, knowledgePointId, question, userAnswer, correctAnswer, reason } = req.body
+    const { courseId, knowledgePointId, question, options, userAnswer, correctAnswer, reason } = req.body
 
     // Verify course exists
     const course = await prisma.course.findUnique({
@@ -309,6 +310,7 @@ router.post('/', [
         courseId,
         knowledgePointId,
         question,
+        options: options ? JSON.stringify(options) : null,
         userAnswer,
         correctAnswer,
         reason: reason || null

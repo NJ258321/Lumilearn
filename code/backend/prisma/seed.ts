@@ -12,6 +12,20 @@ async function main() {
   console.log('开始添加完整的测试数据...')
   console.log('========================================\n')
 
+  // ==================== 0. 创建默认用户 ====================
+  const defaultUser = await prisma.user.upsert({
+    where: { id: 'default-user' },
+    update: {},
+    create: {
+      id: 'default-user',
+      username: 'default',
+      email: 'default@example.com',
+      passwordHash: 'dummy-hash',
+      role: 'USER',
+    },
+  })
+  console.log(`✓ 默认用户: ${defaultUser.username}`)
+
   // ==================== 1. 创建课程 ====================
   const courses = [
     {

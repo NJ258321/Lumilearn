@@ -216,6 +216,7 @@ export interface KnowledgeMastery {
   weakPoints: number
   notStartedPoints: number
   averageScore: number
+  masteryRate: number
   points: KnowledgePointMastery[]
 }
 

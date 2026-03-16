@@ -50,19 +50,24 @@ function verifyToken(token: string): { userId: string; username: string; role: s
   }
 }
 
+// 默认用户 ID，用于不需要登录的接口
+const DEFAULT_USER_ID = 'default-user'
+
 /**
  * 从请求头获取用户 ID（中间件）
+ * 如果没有 token，返回默认用户 ID
  */
 export function getUserIdFromRequest(req: Request): string | null {
   const authHeader = req.headers.authorization
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null
+    // 返回默认用户 ID，允许无需登录的请求
+    return DEFAULT_USER_ID
   }
 
   const token = authHeader.substring(7)
   const decoded = verifyToken(token)
 
-  return decoded?.userId || null
+  return decoded?.userId || DEFAULT_USER_ID
 }
 
 /**

@@ -219,6 +219,7 @@ export const API_CONFIG = {
     recentlyReviewed: '/api/knowledge-points/recently-reviewed',
     // 错题与薄弱点
     mistakeWeakPoints: '/api/mistakes/weak-points',
+    createMistake: '/api/mistakes',
     // 学习记录
     studyRecords: '/api/study-records',
     studyRecordsSearch: '/api/study-records/search',
@@ -242,6 +243,7 @@ export const API_CONFIG = {
     aiSuggest: '/api/ai/suggest',
     aiAnalyzeWeakPoints: '/api/ai/analyze-weak-points',
     aiSearchResources: '/api/ai/search-resources',
+    aiChat: '/api/ai/chat',
     audioVad: '/api/audio',  // :id/vad
     audioVadStatus: '/api/audio/vad/status',
     // P4 - 学习数据统计
@@ -343,6 +345,7 @@ export const API_CONFIG = {
     exams: {
       generate: '/api/exams/generate',
       generateByFilters: '/api/exams/generate-by-filters',
+      aiGenerate: '/api/exams/ai-generate',
       random: '/api/exams/random',
       dailyPractice: '/api/exams/daily-practice',
       challenge: '/api/exams/challenge',
@@ -351,8 +354,9 @@ export const API_CONFIG = {
       sessionSubmit: (sessionId: string) => `/api/exams/${sessionId}/submit`,
       records: '/api/exams/records',
       statistics: '/api/exams/statistics',
-      mistakes: '/api/exams/mistakes',
+      mistakes: '/api/mistakes',
       mistakesRetry: '/api/exams/mistakes/retry',
+      createMistake: '/api/mistakes',
       personalizedPractice: '/api/exams/personalized-practice',
     },
   },

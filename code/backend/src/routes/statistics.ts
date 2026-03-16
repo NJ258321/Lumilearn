@@ -191,6 +191,11 @@ router.get('/statistics/knowledge-points/:courseId/mastery', [
       ? Math.round(totalScore / knowledgePoints.length)
       : 0
 
+    // 计算掌握度：已掌握知识点 / 总知识点 (0-1范围)
+    const masteryRate = knowledgePoints.length > 0
+      ? masteredPoints / knowledgePoints.length
+      : 0
+
     // 格式化知识点数据
     const points = knowledgePoints.map(kp => ({
       id: kp.id,
@@ -213,6 +218,7 @@ router.get('/statistics/knowledge-points/:courseId/mastery', [
         weakPoints,
         notStartedPoints,
         averageScore,
+        masteryRate,
         points
       }
     } as ApiResponse<any>)
