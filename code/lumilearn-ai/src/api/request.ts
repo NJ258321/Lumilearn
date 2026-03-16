@@ -10,12 +10,37 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000
 // 导入错误处理
 import { getErrorMessage, isNetworkError } from './errorMessages'
 
-// Token 存储 key
+// Token 存储 key - 必须与 auth.ts 一致
 const TOKEN_KEY = 'lumilearn_token'
 
 // 获取本地存储的 token
 function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
+}
+
+// 调试登录函数（内部使用）
+async function ensureAuthenticated(): Promise<string | null> {
+  let token = getToken()
+  if (!token) {
+    console.log('[API] Token 不存在，尝试自动登录...')
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/debug-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      const data = await response.json()
+      // 后端返回格式: { success, data: {用户信息}, token }
+      if (data.success && data.token) {
+        token = data.token
+        localStorage.setItem(TOKEN_KEY, token)
+        localStorage.setItem('lumilearn_user', JSON.stringify(data.data))
+        console.log('[API] 自动登录成功')
+      }
+    } catch (error) {
+      console.error('[API] 自动登录失败:', error)
+    }
+  }
+  return token
 }
 
 /**
@@ -40,6 +65,12 @@ class ApiClient {
     console.log('[API Request] URL:', url, 'Method:', options.method || 'GET')
 
     try {
+      // 自动确保已登录（仅对需要认证的端点）
+      const needsAuth = !endpoint.includes('auth/login') && !endpoint.includes('auth/register')
+      if (needsAuth) {
+        await ensureAuthenticated()
+      }
+
       // 提取自定义 headers，移除内部的 _skipDefaultContentType 标记
       const customHeaders = (options.headers as Record<string, string>) || {}
       const skipDefaultContentType = (customHeaders as any)._skipDefaultContentType
@@ -74,6 +105,7 @@ class ApiClient {
         const errorCode = data.code
         // 处理 error 可能是对象或字符串的情况
         const originalError = typeof data.error === 'string' ? data.error : data.error?.message
+
         // 使用错误码映射转换为友好提示
         const friendlyError = getErrorMessage(errorCode, originalError)
 
@@ -251,6 +283,7 @@ export const API_CONFIG = {
     auth: {
       register: '/api/auth/register',
       login: '/api/auth/login',
+      debugLogin: '/api/auth/debug-login',  // 调试登录（自动创建默认用户）
       me: '/api/auth/me',
       profile: '/api/auth/profile',
       password: '/api/auth/password',

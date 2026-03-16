@@ -24,6 +24,7 @@ export interface CreateStudyRecordBody {
   notes?: string
   duration?: number
   status?: 'RECORDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+  imageUrls?: string[]
 }
 
 // 更新学习记录请求体

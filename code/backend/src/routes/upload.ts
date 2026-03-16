@@ -24,25 +24,29 @@ ensureUploadDir().catch(console.error)
 
 // ==================== Multer Configurations ====================
 
+// 硬编码100MB，绕过任何缓存问题
+const MAX_AUDIO_SIZE = 100 * 1024 * 1024 // 100MB
+console.log('[Upload] MAX_AUDIO_SIZE:', MAX_AUDIO_SIZE, 'bytes')
+
 // 音频上传配置
 const audioUpload = multer({
   storage: createMulterStorage(),
   fileFilter: createFileFilter(AUDIO_TYPES),
-  limits: { fileSize: MAX_FILE_SIZE }
+  limits: { fileSize: MAX_AUDIO_SIZE }
 })
 
 // 图片上传配置
 const imageUpload = multer({
   storage: createMulterStorage(),
   fileFilter: createFileFilter(IMAGE_TYPES),
-  limits: { fileSize: MAX_FILE_SIZE }
+  limits: { fileSize: MAX_AUDIO_SIZE }
 })
 
 // 文档上传配置
 const documentUpload = multer({
   storage: createMulterStorage(),
   fileFilter: createFileFilter(DOCUMENT_TYPES),
-  limits: { fileSize: MAX_FILE_SIZE * 5 } // 文档允许更大（50MB）
+  limits: { fileSize: MAX_AUDIO_SIZE * 5 } // 文档允许更大（500MB）
 })
 
 // ==================== Error Handling Middleware ====================
@@ -87,7 +91,7 @@ router.post('/audio', audioUpload.single('audio'), async (req: Request, res: Res
 
     const responseData: UploadResponse = {
       filename: file.filename,
-      originalName: file.originalname,
+      originalName: Buffer.from(file.originalname, 'latin1').toString('utf8'),
       size: file.size,
       mimetype: file.mimetype,
       url: getFileUrl(file.filename)
@@ -122,7 +126,7 @@ router.post('/image', imageUpload.single('image'), async (req: Request, res: Res
 
     const responseData: UploadResponse = {
       filename: file.filename,
-      originalName: file.originalname,
+      originalName: Buffer.from(file.originalname, 'latin1').toString('utf8'),
       size: file.size,
       mimetype: file.mimetype,
       url: getFileUrl(file.filename)
@@ -157,7 +161,7 @@ router.post('/document', documentUpload.single('document'), async (req: Request,
 
     const responseData: UploadResponse = {
       filename: file.filename,
-      originalName: file.originalname,
+      originalName: Buffer.from(file.originalname, 'latin1').toString('utf8'),
       size: file.size,
       mimetype: file.mimetype,
       url: getFileUrl(file.filename)

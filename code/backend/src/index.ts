@@ -4,7 +4,8 @@ import dotenv from 'dotenv'
 import path from 'path'
 
 // Load environment variables
-dotenv.config()
+dotenv.config({ path: path.resolve(process.cwd(), '.env') })
+console.log('[Env] Loaded MINIMAX_API_KEY:', process.env.MINIMAX_API_KEY ? 'YES' : 'NO')
 
 // Import error handlers
 import { notFoundHandler, errorHandler, setupUncaughtExceptionHandler, asyncHandler } from './errors/errorHandler.js'
@@ -71,8 +72,8 @@ app.use(cors({
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')))
 
 // Body parser middleware
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+app.use(express.json({ limit: '100mb' }))
+app.use(express.urlencoded({ extended: true, limit: '100mb' }))
 
 // Request logging middleware
 app.use((req: Request, _res: Response, next: NextFunction) => {

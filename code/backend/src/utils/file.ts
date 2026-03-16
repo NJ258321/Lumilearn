@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from 'uuid'
 export const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads'
 
 /** 文件大小限制（字节） */
-export const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '10485760') // 默认10MB
+export const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '104857600') // 默认100MB
 
 /** 支持的音频类型 */
 export const AUDIO_TYPES = [

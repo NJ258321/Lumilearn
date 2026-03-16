@@ -35,10 +35,46 @@ export async function register(
  */
 export async function login(data: LoginRequest): Promise<ApiResponse<AuthResponse>> {
   try {
-    return await api.post<AuthResponse>(API_CONFIG.endpoints.auth.login, data)
+    const response = await api.post<any>(API_CONFIG.endpoints.auth.login, data)
+    if (response.success && response.data) {
+      // 后端返回格式: { success, data: {用户信息}, token }
+      // 需要转换为前端期望格式: { success, data: { user, token } }
+      return {
+        success: true,
+        data: {
+          user: response.data,
+          token: response.token
+        }
+      }
+    }
+    return { success: false, error: response.error || '登录失败' }
   } catch (error) {
     console.error('[auth] login error:', error)
     return { success: false, error: '登录失败' }
+  }
+}
+
+/**
+ * 调试登录 - 自动创建并登录默认用户
+ */
+export async function debugLogin(): Promise<ApiResponse<AuthResponse>> {
+  try {
+    const response = await api.post<any>(API_CONFIG.endpoints.auth.debugLogin, {})
+    if (response.success && response.data) {
+      // 后端返回格式: { success, data: {用户信息}, token }
+      // 需要转换为前端期望格式: { success, data: { user, token } }
+      return {
+        success: true,
+        data: {
+          user: response.data,
+          token: response.token
+        }
+      }
+    }
+    return { success: false, error: response.error || '调试登录失败' }
+  } catch (error) {
+    console.error('[auth] debug login error:', error)
+    return { success: false, error: '调试登录失败' }
   }
 }
 

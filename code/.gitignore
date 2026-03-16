@@ -11,3 +11,5 @@ dist/
 
 # 环境变量文件
 .env
+
+.code/lumilearn-ai/nul

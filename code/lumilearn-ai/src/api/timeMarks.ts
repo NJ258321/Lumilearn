@@ -151,3 +151,47 @@ export async function batchCreateTimeMarks(
     return { success: false, error: '批量添加时间标记失败' }
   }
 }
+
+// ==================== AI分析相关类型 ====================
+
+export interface ReviewSuggestions {
+  firstReview: string
+  secondReview: string
+  consolidation: string
+}
+
+export interface TimeMarkAnalysis {
+  summary: string
+  keyPoints: string[]
+  knowledgePoints: string[]
+  reviewSuggestions: ReviewSuggestions
+  memoryTips: string
+}
+
+export interface KnowledgePointInfo {
+  id: string
+  name: string
+  masteryScore?: number
+}
+
+export interface TimeMarkAnalysisResponse {
+  timeMarkId: string
+  type: string
+  content: string
+  analysis: TimeMarkAnalysis
+  relatedKnowledgePoints: KnowledgePointInfo[]
+  currentKnowledgePoint: KnowledgePointInfo | null
+}
+
+// AI分析时间标记
+export async function analyzeTimeMark(
+  timeMarkId: string
+): Promise<ApiResponse<TimeMarkAnalysisResponse>> {
+  try {
+    return await api.post<TimeMarkAnalysisResponse>('/api/ai/analyze-time-mark', {
+      timeMarkId
+    })
+  } catch (error) {
+    return { success: false, error: 'AI分析失败' }
+  }
+}

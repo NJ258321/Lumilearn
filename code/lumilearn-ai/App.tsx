@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Layout from './components/Layout';
 import BottomNav from './components/BottomNav';
 import ErrorBoundary from './src/components/ErrorBoundary';
@@ -22,6 +22,7 @@ import Mistakes from './pages/Mistakes';
 import ExamCalendar from './pages/ExamCalendar';
 import WeakPoints from './pages/WeakPoints';
 import { AppView } from './types';
+import { isLoggedIn, debugLogin, setToken, setUser, getToken } from './src/api/auth';
 
 // 学习模式类型
 type CourseStudyMode = 'study' | 'review';
@@ -32,8 +33,53 @@ const App: React.FC = () => {
   const [courseStudyMode, setCourseStudyMode] = useState<CourseStudyMode>('study');
   const [viewData, setViewData] = useState<any>(null);
   const [recordId, setRecordId] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const authChecked = useRef(false);
 
-  const navigate = (view: AppView, data?: any) => {
+  // 自动登录检查 - 强制使用调试登录，确保 token 有效
+  useEffect(() => {
+    if (authChecked.current) return;
+    authChecked.current = true;
+
+    const initAuth = async () => {
+      // 强制清除旧 token，使用调试登录
+      console.log('[App] 强制使用调试登录...')
+      try {
+        const response = await debugLogin()
+        if (response.success && response.data) {
+          console.log('[App] 调试登录成功:', response.data.user?.username)
+          setToken(response.data.token)
+          setUser(response.data.user)
+          // 强制延迟确保 localStorage 已保存
+          await new Promise(resolve => setTimeout(resolve, 500))
+        } else {
+          console.warn('[App] 调试登录失败:', response.error)
+        }
+      } catch (error) {
+        console.error('[App] 调试登录错误:', error)
+      }
+      setAuthReady(true)
+    }
+
+    initAuth()
+  }, [])
+
+  const navigate = async (view: AppView, data?: any) => {
+    // 检查 token 是否存在，如果不存在则重新登录
+    const currentToken = localStorage.getItem('lumilearn_token')
+    if (!currentToken) {
+      console.log('[navigate] Token 不存在，重新登录...')
+      try {
+        const response = await debugLogin()
+        if (response.success && response.data) {
+          setToken(response.data.token)
+          setUser(response.data.user)
+        }
+      } catch (error) {
+        console.error('[navigate] 重新登录失败:', error)
+      }
+    }
+
     setCurrentView(view);
     setViewData(data);
     if (data && typeof data === 'object') {
@@ -119,11 +165,27 @@ const App: React.FC = () => {
   };
 
   const showNav = [
-    AppView.DASHBOARD, 
-    AppView.COURSES, 
-    AppView.ANALYSIS, 
+    AppView.DASHBOARD,
+    AppView.COURSES,
+    AppView.ANALYSIS,
     AppView.PRACTICE_LIST
   ].includes(currentView);
+
+  // 等待认证就绪
+  if (!authReady) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+        <div className="text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-400 to-purple-500 rounded-2xl shadow-lg shadow-blue-500/30 mb-4 animate-pulse">
+            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <p className="text-white/60 text-sm">正在初始化...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <ErrorBoundary>

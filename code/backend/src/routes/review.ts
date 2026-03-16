@@ -1432,7 +1432,7 @@ router.post('/review/optimize', [
     })
 
     if (courses.length !== courseIds.length) {
-      return res.status(404).json({
+      return res.status(400).json({
         success: false,
         error: '部分课程不存在',
         code: 'COURSE_NOT_FOUND'

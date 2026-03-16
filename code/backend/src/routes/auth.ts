@@ -231,6 +231,62 @@ router.post('/auth/login', [
   }
 })
 
+// ==================== 调试登录（自动创建默认用户）====================
+
+router.post('/auth/debug-login', async (req: Request, res: Response) => {
+  try {
+    const DEBUG_EMAIL = 'debug@lumi.ai'
+    const DEBUG_PASSWORD = 'debug123456'
+    const DEBUG_USERNAME = 'debug_user'
+    const DEBUG_DISPLAYNAME = '调试用户'
+
+    // 查找或创建调试用户
+    let user = await prisma.user.findUnique({
+      where: { email: DEBUG_EMAIL }
+    })
+
+    if (!user) {
+      console.log('[Debug] 创建默认调试用户...')
+      const passwordHash = await bcrypt.hash(DEBUG_PASSWORD, 10)
+      user = await prisma.user.create({
+        data: {
+          username: DEBUG_USERNAME,
+          email: DEBUG_EMAIL,
+          passwordHash,
+          displayName: DEBUG_DISPLAYNAME,
+          role: 'USER'
+        }
+      })
+      console.log('[Debug] 默认调试用户创建成功:', user.id)
+    }
+
+    // 生成 Token
+    const token = generateToken(user as User)
+
+    res.json({
+      success: true,
+      data: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        displayName: user.displayName,
+        role: user.role,
+        preferences: user.preferences ? JSON.parse(user.preferences) : null,
+        createdAt: user.createdAt
+      },
+      token,
+      isDebugUser: true
+    } as ApiResponse<any>)
+  } catch (error: any) {
+    console.error('Error debug login:', error)
+    res.status(500).json({
+      success: false,
+      error: '调试登录失败',
+      code: 'DEBUG_LOGIN_FAILED'
+    } as ApiResponse<undefined>)
+  }
+})
+
 // ==================== P5.1.3: 获取当前用户 ====================
 
 router.get('/auth/me', async (req: Request, res: Response) => {

@@ -3,6 +3,7 @@
 // =====================================================
 
 import { api, API_CONFIG } from './request'
+import { isLoggedIn, debugLogin, setToken, setUser } from './auth'
 import type {
   ApiResponse,
   Reminder,
@@ -53,9 +54,19 @@ export async function getReminderList(
 }
 
 /**
- * 获取今日提醒
+ * 获取今日提醒 - 自动确保登录
  */
 export async function getTodayReminders(): Promise<ApiResponse<TodayRemindersResponse>> {
+  // 确保已登录
+  if (!isLoggedIn()) {
+    console.log('[reminders] 未登录，自动登录...')
+    const result = await debugLogin()
+    if (result.success && result.data) {
+      setToken(result.data.token)
+      setUser(result.data.user)
+    }
+  }
+
   try {
     return await api.get<TodayRemindersResponse>(API_CONFIG.endpoints.reminders.today)
   } catch (error) {

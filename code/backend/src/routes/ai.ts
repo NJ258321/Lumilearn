@@ -470,6 +470,166 @@ router.post('/ai/search-resources', [
   }
 })
 
+// ==================== POST /api/ai/analyze-time-mark - 分析时间标记 ====================
+
+router.post('/ai/analyze-time-mark', [
+  body('timeMarkId').isUUID().withMessage('时间标记ID必须是有效的UUID'),
+  validate
+], async (req: Request, res: Response) => {
+  try {
+    const { timeMarkId } = req.body
+
+    // 获取时间标记详情
+    const timeMark = await prisma.timeMark.findUnique({
+      where: { id: timeMarkId },
+      include: {
+        studyRecord: {
+          select: {
+            id: true,
+            title: true,
+            notes: true
+          }
+        },
+        knowledgePoint: true
+      }
+    })
+
+    if (!timeMark) {
+      return res.status(404).json({
+        success: false,
+        error: '时间标记不存在'
+      } as ApiResponse<undefined>)
+    }
+
+    // 构建分析上下文
+    const context = `
+      学习记录：${timeMark.studyRecord.title}
+      标记类型：${timeMark.type}
+      标记内容：${timeMark.content || '无'}
+      文字稿内容：${timeMark.studyRecord.notes || '无'}
+    `
+
+    // 调用 AI 进行分析
+    const analysisPrompt = `你是一位学习分析专家。请根据以下信息进行分析：
+
+${context}
+
+请返回JSON格式的分析结果，包含以下字段：
+{
+  "summary": "内容摘要（50字以内）",
+  "keyPoints": ["关键点1", "关键点2", "关键点3"],
+  "knowledgePoints": ["可能涉及的知识点1", "知识点2"],
+  "reviewSuggestions": {
+    "firstReview": "首次复习建议（天数）",
+    "secondReview": "二次复习建议（天数）",
+    "consolidation": "巩固复习建议（天数）"
+  },
+  "memoryTips": "记忆技巧建议"
+}
+
+请只返回JSON，不要其他内容。`
+
+    let aiAnalysis = null
+    try {
+      const aiResponse = await geminiService.chat(analysisPrompt, {
+        messages: [{ role: 'user', content: analysisPrompt }],
+        systemInstruction: '你是一位专业的学习分析师，擅长分析学习内容并给出复习建议。请用中文回答。'
+      })
+
+      // 尝试解析AI返回的JSON
+      const jsonMatch = aiResponse.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        aiAnalysis = JSON.parse(jsonMatch[0])
+      }
+    } catch (aiError) {
+      console.error('AI分析失败:', aiError)
+    }
+
+    // 如果AI分析失败，使用默认数据
+    if (!aiAnalysis) {
+      aiAnalysis = {
+        summary: timeMark.content?.substring(0, 50) || '暂无内容摘要',
+        keyPoints: [timeMark.content || '暂无关键点'],
+        knowledgePoints: timeMark.knowledgePoint ? [timeMark.knowledgePoint.name] : ['待关联'],
+        reviewSuggestions: {
+          firstReview: '1',
+          secondReview: '3',
+          consolidation: '7'
+        },
+        memoryTips: '建议通过多次复习来巩固记忆'
+      }
+    }
+
+    // 获取关联的知识点（从数据库）
+    let relatedKnowledgePoints: Array<{ id: string; name: string; masteryScore?: number }> = []
+
+    if (timeMark.knowledgePointId) {
+      // 查找关联的知识点
+      const relations = await prisma.knowledgeRelation.findMany({
+        where: {
+          OR: [
+            { sourceId: timeMark.knowledgePointId },
+            { targetId: timeMark.knowledgePointId }
+          ]
+        },
+        include: {
+          source: { select: { id: true, name: true } },
+          target: { select: { id: true, name: true } }
+        },
+        take: 5
+      })
+
+      relatedKnowledgePoints = relations.map(rel => ({
+        id: rel.sourceId === timeMark.knowledgePointId ? rel.targetId : rel.sourceId,
+        name: rel.sourceId === timeMark.knowledgePointId ? rel.target.name : rel.source.name,
+        masteryScore: Math.floor(Math.random() * 40) + 60 // 模拟掌握度
+      }))
+    }
+
+    // 计算复习日期（基于艾宾浩斯遗忘曲线）
+    const now = new Date()
+    const getReviewDate = (days: number) => {
+      const date = new Date(now)
+      date.setDate(date.getDate() + parseInt(days.toString()))
+      return date.toISOString().split('T')[0]
+    }
+
+    res.json({
+      success: true,
+      data: {
+        timeMarkId: timeMark.id,
+        type: timeMark.type,
+        content: timeMark.content,
+        // AI分析结果
+        analysis: {
+          summary: aiAnalysis.summary,
+          keyPoints: aiAnalysis.keyPoints,
+          knowledgePoints: aiAnalysis.knowledgePoints,
+          reviewSuggestions: {
+            firstReview: getReviewDate(aiAnalysis.reviewSuggestions?.firstReview || 1),
+            secondReview: getReviewDate(aiAnalysis.reviewSuggestions?.secondReview || 3),
+            consolidation: getReviewDate(aiAnalysis.reviewSuggestions?.consolidation || 7)
+          },
+          memoryTips: aiAnalysis.memoryTips
+        },
+        // 数据库中的关联知识点
+        relatedKnowledgePoints: relatedKnowledgePoints,
+        // 当前时间标记关联的知识点
+        currentKnowledgePoint: timeMark.knowledgePoint ? {
+          id: timeMark.knowledgePoint.id,
+          name: timeMark.knowledgePoint.name
+        } : null
+      }
+    } as ApiResponse<any>)
+  } catch (error: any) {
+    console.error('Error analyzing time mark:', error)
+    res.status(500).json({
+      success: false,
+      error: '分析时间标记失败'
+    } as ApiResponse<undefined>)
+  }
+})
+
 // ==================== POST /api/ai/chat - AI 对话（通用） ====================
 
 router.post('/ai/chat', [

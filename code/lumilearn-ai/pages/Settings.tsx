@@ -7,7 +7,7 @@ import { ArrowLeft, Loader2, Save, RotateCcw, Bell, BookOpen, Sparkles, Palette,
 import { AppView } from '../types';
 import { getUserSettings, updateUserSettings, getDefaultSettings } from '../src/api/settings';
 import { getReminderList, createReminder, deleteReminder, completeReminder } from '../src/api/reminders';
-import { getUser, setUser, clearToken } from '../src/api/auth';
+import { getUser, setUser, clearToken, isLoggedIn, debugLogin, setToken } from '../src/api/auth';
 import { exportData, getSyncStatus, triggerSync } from '../src/api/export';
 import type { UserSettingsResponse, UpdateSettingsRequest, DefaultSettingsResponse, UserType, Reminder, CreateReminderRequest, SyncStatus } from '../types';
 
@@ -180,6 +180,16 @@ const Settings: React.FC<SettingsProps> = ({ onNavigate }) => {
 
   // Fetch reminders
   const fetchReminders = useCallback(async () => {
+    // 确保已登录
+    if (!isLoggedIn()) {
+      console.log('[Settings] 未登录，尝试自动登录...')
+      const loginResult = await debugLogin()
+      if (loginResult.success && loginResult.data) {
+        setToken(loginResult.data.token)
+        setUser(loginResult.data.user)
+      }
+    }
+
     setRemindersLoading(true);
     try {
       const response = await getReminderList();

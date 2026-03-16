@@ -1,11 +1,60 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Mic, Square, Camera, Flag, Upload, ArrowLeft, ChevronDown, Play, Zap, Type, X, Search, Check, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+
+// Web Speech API 类型声明
+interface SpeechRecognitionEvent extends Event {
+  results: SpeechRecognitionResultList;
+  resultIndex: number;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  error: string;
+}
+
+interface SpeechRecognitionResultList {
+  length: number;
+  item(index: number): SpeechRecognitionResult;
+  [index: number]: SpeechRecognitionResult;
+}
+
+interface SpeechRecognitionResult {
+  length: number;
+  item(index: number): SpeechRecognitionAlternative;
+  [index: number]: SpeechRecognitionAlternative;
+  isFinal: boolean;
+}
+
+interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition;
+    webkitSpeechRecognition: new () => SpeechRecognition;
+  }
+}
+import { Mic, Square, Camera, Flag, Upload, ArrowLeft, ChevronDown, Play, Zap, Type, X, Search, Check, Loader2, AlertCircle, CheckCircle, Pause, Download, RotateCcw, Plus } from 'lucide-react';
 import { Course, Chapter } from '../types';
-import { getCourseList } from '../src/api/courses';
-import { getChapterList } from '../src/api/chapters';
-import { createStudyRecord } from '../src/api/studyRecords';
+import { getCourseList, createCourse } from '../src/api/courses';
+import { getChapterList, createChapter } from '../src/api/chapters';
+import { createStudyRecord, getStudyRecordList } from '../src/api/studyRecords';
 import { uploadAudio, uploadImage, uploadDocument, deleteFile } from '../src/api/upload';
+import { semanticAnalysis } from '../src/api/audio';
+import { batchCreateTimeMarks } from '../src/api/timeMarks';
 
 interface RecorderProps {
   onBack: () => void;
@@ -74,9 +123,104 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
     }
   }, []);
 
+  // 创建新章节
+  const createNewChapter = async (chapterName: string) => {
+    if (!selectedCourseId) {
+      alert('请先选择课程');
+      return;
+    }
+    try {
+      const response = await createChapter({
+        name: chapterName,
+        courseId: selectedCourseId,
+        order: chapters.length + 1
+      });
+      if (response.success && response.data) {
+        // 刷新章节列表
+        await fetchChapters(selectedCourseId);
+        // 选择新创建的章节
+        setSelectedChapterId(response.data.id);
+        setShowChapterPicker(false);
+        alert('章节创建成功！');
+      } else {
+        alert(response.error || '创建章节失败');
+      }
+    } catch (err) {
+      console.error('创建章节失败', err);
+      alert('创建章节失败');
+    }
+  };
+
   useEffect(() => {
     fetchCourses();
   }, [fetchCourses]);
+
+  // 初始化语音识别 - 只在组件挂载时执行一次
+  useEffect(() => {
+    // 使用 ref 来跟踪录制状态，避免闭包问题
+    const isRecordingRef = { current: false };
+
+    // 检查浏览器是否支持Web Speech API
+    const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      setTranscriptionSupported(true);
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'zh-CN';
+
+      // 处理识别结果
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + ' ';
+          }
+        }
+
+        if (finalTranscript) {
+          console.log('识别到文字:', finalTranscript);
+          setTranscription(prev => prev + finalTranscript);
+        }
+      };
+
+      // 处理错误
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        console.error('语音识别错误:', event.error);
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          setIsTranscribing(false);
+        }
+      };
+
+      // 处理识别结束
+      recognition.onend = () => {
+        // 只有当仍在录制状态时才重新启动
+        if (isRecordingRef.current) {
+          console.log('识别结束，重新启动...');
+          try {
+            recognition.start();
+          } catch (e) {
+            console.error('重新启动语音识别失败:', e);
+          }
+        }
+      };
+
+      // 保存对 isRecordingRef 的引用，以便在回调中使用
+      (recognition as any)._isRecordingRef = isRecordingRef;
+      recognitionRef.current = recognition;
+    } else {
+      setTranscriptionSupported(false);
+      console.log('浏览器不支持Web Speech API');
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []); // 空依赖数组，只执行一次
 
   // 课程变化时加载章节
   useEffect(() => {
@@ -107,32 +251,71 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
   // Save State
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const [recordTitle, setRecordTitle] = useState('');
+  const [customChapterName, setCustomChapterName] = useState(''); // 自定义章节名
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
   const [recordedImages, setRecordedImages] = useState<string[]>([]);
+
+  // 弹窗内音频播放状态
+  const [isPopupPlaying, setIsPopupPlaying] = useState(false);
+  const [popupCurrentTime, setPopupCurrentTime] = useState(0);
+  const [popupDuration, setPopupDuration] = useState(0);
+  const popupAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 语音识别相关
+  const [transcription, setTranscription] = useState<string>('');  // 转写文本
+  const [isTranscribing, setIsTranscribing] = useState(false);  // 是否正在转写
+  const [transcriptionSupported, setTranscriptionSupported] = useState(false);  // 是否支持语音识别
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  // 音频声浪相关
+  const [audioLevels, setAudioLevels] = useState<number[]>(new Array(32).fill(0));  // 声浪级别
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationRef = useRef<number | null>(null);
+
   // 上传状态
   const [uploading, setUploading] = useState(false);
 
-  // 处理文件上传
+  // 处理文件上传（音频或文档）
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 验证文件类型
-    const allowedTypes = ['audio/mpeg', 'audio/wav', 'audio/m4a', 'audio/x-m4a', 'audio/mp3'];
-    if (!allowedTypes.includes(file.type)) {
-      setError('仅支持 MP3、WAV、M4A 格式的音频文件');
+    // 定义允许的文件类型
+    const allowedAudioTypes = ['audio/mpeg', 'audio/wav', 'audio/m4a', 'audio/x-m4a', 'audio/mp3', 'audio/webm', 'audio/ogg'];
+    const allowedDocumentTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    ];
+
+    const isAudio = allowedAudioTypes.includes(file.type);
+    const isDocument = allowedDocumentTypes.includes(file.type);
+
+    if (!isAudio && !isDocument) {
+      setError('仅支持音频（MP3、WAV、M4A、WebM）或文档（PDF、Word、PowerPoint、Excel）格式');
       return;
     }
 
-    // 验证文件大小（10MB）
-    if (file.size > 10 * 1024 * 1024) {
-      setError('文件大小不能超过 10MB');
+    // 根据文件类型验证大小
+    const maxAudioSize = 50 * 1024 * 1024; // 50MB
+    const maxDocumentSize = 50 * 1024 * 1024; // 50MB
+
+    if (isAudio && file.size > maxAudioSize) {
+      setError('音频文件大小不能超过 50MB');
+      return;
+    }
+    if (isDocument && file.size > maxDocumentSize) {
+      setError('文档文件大小不能超过 50MB');
       return;
     }
 
@@ -140,12 +323,27 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
     setError(null);
 
     try {
-      const response = await uploadAudio(file);
-      if (response.success && response.data) {
-        setRecordedAudioUrl(response.data.url);
-        showSuccess('音频上传成功！');
+      if (isDocument) {
+        // 上传文档
+        const response = await uploadDocument(file);
+        if (response.success && response.data) {
+          setUploadedDocument({
+            url: response.data.url,
+            originalName: response.data.originalName
+          });
+          showSuccess('文档上传成功！');
+        } else {
+          setError(response.error || '上传失败');
+        }
       } else {
-        setError(response.error || '上传失败');
+        // 上传音频
+        const response = await uploadAudio(file);
+        if (response.success && response.data) {
+          setRecordedAudioUrl(response.data.url);
+          showSuccess('音频上传成功！');
+        } else {
+          setError(response.error || '上传失败');
+        }
       }
     } catch (err) {
       setError('上传失败，请重试');
@@ -165,6 +363,7 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
 
   // 图片上传相关
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);  // 新增：用于直接拍照
   const [imageUploading, setImageUploading] = useState(false);
   const [uploadedImages, setUploadedImages] = useState<{ url: string; originalName: string }[]>([]);
 
@@ -223,9 +422,14 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
     }
   };
 
-  // 触发图片选择
+  // 触发图片选择（从相册）
   const triggerImageUpload = () => {
     imageInputRef.current?.click();
+  };
+
+  // 触发直接拍照（调用摄像头）
+  const triggerCameraCapture = () => {
+    cameraInputRef.current?.click();
   };
 
   // 删除已上传的图片
@@ -326,11 +530,63 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       setError('请输入记录标题');
       return;
     }
-    if (!selectedCourseId) {
+
+    // 验证课程和章节
+    let finalCourseId = selectedCourseId;
+    let finalChapterId = selectedChapterId;
+
+    if (!selectedCourseId && !courseName) {
       setError('请选择课程');
       return;
     }
-    if (!selectedChapterId) {
+
+    // 如果是自定义课程
+    if (!selectedCourseId && courseName) {
+      if (!customChapterName.trim()) {
+        setError('请输入章节名称');
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        // 1. 创建课程
+        const courseRes = await createCourse({
+          name: courseName,
+          type: 'PROFESSIONAL',
+          status: 'STUDYING'
+        });
+
+        if (!courseRes.success || !courseRes.data) {
+          setError(courseRes.error || '创建课程失败');
+          setLoading(false);
+          return;
+        }
+
+        finalCourseId = courseRes.data.id;
+
+        // 2. 创建章节
+        const chapterRes = await createChapter({
+          courseId: finalCourseId,
+          name: customChapterName.trim(),
+          order: 1
+        });
+
+        if (!chapterRes.success || !chapterRes.data) {
+          setError(chapterRes.error || '创建章节失败');
+          setLoading(false);
+          return;
+        }
+
+        finalChapterId = chapterRes.data.id;
+
+      } catch (err) {
+        setError('创建课程或章节失败，请重试');
+        setLoading(false);
+        return;
+      }
+    } else if (selectedCourseId && !selectedChapterId) {
       setError('请选择章节');
       return;
     }
@@ -359,8 +615,8 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       const imageUrls = uploadedImages.map(img => img.url);
 
       const response = await createStudyRecord({
-        courseId: selectedCourseId,
-        chapterId: selectedChapterId,
+        courseId: finalCourseId,
+        chapterId: finalChapterId,
         title: recordTitle,
         date: new Date().toISOString(),
         audioUrl: audioUrl || undefined,
@@ -371,10 +627,47 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       });
 
       if (response.success) {
+        // 保存成功后，进行AI语义分析
+        const recordId = response.data?.id;
+        if (recordId && audioUrl) {
+          try {
+            console.log('[Recorder] 开始AI语义分析，学习记录ID:', recordId);
+            const analysisRes = await semanticAnalysis(recordId);
+
+            if (analysisRes.success && analysisRes.data?.semanticMarks?.length > 0) {
+              console.log('[Recorder] 语义分析完成，标记点数:', analysisRes.data.semanticMarks.length);
+
+              // 将语义标记点批量创建为时间标记
+              const timeMarksData = analysisRes.data.semanticMarks.map((mark: any) => ({
+                studyRecordId: recordId,
+                type: mark.type === '知识点' ? 'EMPHASIS' :
+                      mark.type === '重点' ? 'EMPHASIS' :
+                      mark.type === '例题' ? 'NOTE' :
+                      mark.type === '小结' ? 'SUMMARY' :
+                      mark.type === '疑问' ? 'QUESTION' : 'NOTE',
+                timestamp: mark.timestamp,
+                content: mark.content,
+              }));
+
+              const batchRes = await batchCreateTimeMarks(timeMarksData);
+              if (batchRes.success) {
+                console.log('[Recorder] 语义标记点已保存，成功创建', timeMarksData.length, '个标记');
+              } else {
+                console.warn('[Recorder] 批量创建标记点失败:', batchRes.error);
+              }
+            } else {
+              console.log('[Recorder] 语义分析未返回有效标记点:', analysisRes.data);
+            }
+          } catch (analysisErr) {
+            console.error('[Recorder] 语义分析异常:', analysisErr);
+          }
+        }
+
         showSuccess('学习记录保存成功！');
         setShowSaveConfirm(false);
         // Reset form
         setRecordTitle('');
+        setCustomChapterName('');
         setNoteText('');
         setRecordedAudioUrl(null);
         setRecordedImages([]);
@@ -405,6 +698,44 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
 
       console.log('麦克风获取成功', stream.getAudioTracks()[0].getSettings());
 
+      // 创建音频分析器 - 用于声浪可视化
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.8;
+
+      // 将麦克风连接到分析器
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+
+      // 开始声浪动画循环
+      const updateAudioLevels = () => {
+        if (!analyserRef.current) return;
+
+        const bufferLength = analyserRef.current.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        analyserRef.current.getByteFrequencyData(dataArray);
+
+        // 将频率数据转换为声浪级别（0-1）
+        const levels: number[] = [];
+        const step = Math.floor(bufferLength / 32);
+        for (let i = 0; i < 32; i++) {
+          const value = dataArray[i * step];
+          levels.push(value / 255);
+        }
+
+        setAudioLevels(levels);
+
+        // 继续更新
+        animationRef.current = requestAnimationFrame(updateAudioLevels);
+      };
+
+      // 开始声浪动画
+      updateAudioLevels();
+
       // 创建一个 audio 元素实时播放麦克风输入，用于调试
       const audioElement = new Audio();
       audioElement.srcObject = stream;
@@ -422,10 +753,17 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       }
       console.log('使用的MIME类型:', mimeType || '浏览器默认');
 
+      // 如果已经有录音数据，说明是继续录音，不要清空 chunks
+      const isResume = chunksRef.current.length > 0;
+
       const options = mimeType ? { mimeType } : undefined;
       const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
-      chunksRef.current = [];
+
+      // 只有第一次开始时才清空 chunks，继续时不清空
+      if (!isResume) {
+        chunksRef.current = [];
+      }
 
       mediaRecorder.ondataavailable = (e) => {
         console.log('收到音频数据块:', e.data.size, 'bytes');
@@ -446,8 +784,31 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       };
 
       mediaRecorder.start(100);
+      // 启动语音识别
+      if (recognitionRef.current && transcriptionSupported) {
+        try {
+          // 更新录制状态引用，让识别器的回调知道当前状态
+          (recognitionRef.current as any)._isRecordingRef.current = true;
+
+          // 如果是继续录音，先停止识别再重启
+          if (isResume) {
+            recognitionRef.current.stop();
+          }
+          recognitionRef.current.start();
+          setIsTranscribing(true);
+          console.log('语音识别已启动');
+        } catch (err) {
+          console.error('启动语音识别失败:', err);
+        }
+      }
+
       setIsRecording(true);
-      setDuration(0);
+      // 只有第一次开始时才重置时长，继续时不重置
+      // 只有第一次开始时才清空转写文本
+      if (!isResume) {
+        setDuration(0);
+        setTranscription('');
+      }
     } catch (err) {
       console.error('录音失败:', err);
       setError('无法访问麦克风，请检查权限');
@@ -458,6 +819,36 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
+
+      // 停止声浪动画
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+
+      // 清理音频分析器
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+        analyserRef.current = null;
+      }
+
+      // 重置声浪级别
+      setAudioLevels(new Array(32).fill(0));
+
+      // 停止语音识别
+      if (recognitionRef.current) {
+        try {
+          // 更新录制状态引用
+          (recognitionRef.current as any)._isRecordingRef.current = false;
+          recognitionRef.current.stop();
+          setIsTranscribing(false);
+          console.log('语音识别已停止，转写内容:', transcription);
+        } catch (err) {
+          console.error('停止语音识别失败:', err);
+        }
+      }
+
       setIsRecording(false);
     }
   };
@@ -473,9 +864,58 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
     return () => clearInterval(interval);
   }, [isRecording]);
 
+  // 弹窗关闭时停止音频
+  useEffect(() => {
+    if (!showSaveConfirm && popupAudioRef.current) {
+      popupAudioRef.current.pause();
+      popupAudioRef.current.currentTime = 0;
+      setIsPopupPlaying(false);
+      setPopupCurrentTime(0);
+    }
+  }, [showSaveConfirm]);
+
+  // 弹窗打开时获取音频时长 - 使用 AudioContext
+  useEffect(() => {
+    if (showSaveConfirm && recordedAudioUrl) {
+      // 重置状态
+      setPopupCurrentTime(0);
+      setPopupDuration(0);
+
+      // 使用 AudioContext 获取 blob URL 的准确时长
+      const fetchAudioDuration = async () => {
+        try {
+          const response = await fetch(recordedAudioUrl);
+          const blob = await response.blob();
+          const arrayBuffer = await blob.arrayBuffer();
+          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+          const duration = audioBuffer.duration;
+          console.log('AudioContext duration:', duration);
+          setPopupDuration(duration);
+          audioContext.close();
+        } catch (err) {
+          console.error('获取音频时长失败:', err);
+          // 备用方案：使用 audio 元素
+          if (popupAudioRef.current) {
+            popupAudioRef.current.load();
+            setTimeout(() => {
+              if (popupAudioRef.current && popupAudioRef.current.duration && !isNaN(popupAudioRef.current.duration)) {
+                setPopupDuration(popupAudioRef.current.duration);
+              }
+            }, 500);
+          }
+        }
+      };
+
+      fetchAudioDuration();
+    }
+  }, [showSaveConfirm, recordedAudioUrl]);
+
   const formatTime = (sec: number) => {
+    // 处理无效值
+    if (!sec || !isFinite(sec) || isNaN(sec)) return '00:00';
     const m = Math.floor(sec / 60).toString().padStart(2, '0');
-    const s = (sec % 60).toString().padStart(2, '0');
+    const s = Math.floor(sec % 60).toString().padStart(2, '0');
     return `${m}:${s}`;
   };
 
@@ -487,20 +927,29 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
   return (
     <div className="flex flex-col h-screen bg-[#F7F9FC] text-slate-800 relative font-sans overflow-hidden">
 
-      {/* 隐藏的文件输入 */}
+      {/* 隐藏的文件输入（支持音频和文档） */}
       <input
         ref={fileInputRef}
         type="file"
-        accept="audio/mpeg,audio/wav,audio/m4a,audio/x-m4a,audio/mp3"
+        accept="audio/mpeg,audio/wav,audio/m4a,audio/x-m4a,audio/mp3,audio/webm,audio/ogg,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         onChange={handleFileUpload}
         className="hidden"
       />
-      {/* 隐藏的图片文件输入 */}
+      {/* 隐藏的图片文件输入 - 从相册选择 */}
       <input
         ref={imageInputRef}
         type="file"
         accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
         multiple
+        onChange={handleImageUpload}
+        className="hidden"
+      />
+      {/* 隐藏的摄像头拍照输入 - 直接调用摄像头 */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/gif,image/webp"
+        capture="environment"
         onChange={handleImageUpload}
         className="hidden"
       />
@@ -526,8 +975,40 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
             {/* 保存按钮 - 当有时长或笔记时显示 */}
             {(duration > 0 || noteText) && !isRecording && (
                 <button
-                    onClick={() => {
-                        setRecordTitle(`${courseName} - ${formatTime(duration)}`);
+                    onClick={async () => {
+                        // 获取章节名称
+                        let chapterName = '';
+                        if (selectedCourseId && selectedChapterId) {
+                            // 已有章节
+                            const chapter = chapters.find(c => c.id === selectedChapterId);
+                            chapterName = chapter?.name || '';
+                        } else if (!selectedCourseId && customChapterName) {
+                            // 新建章节
+                            chapterName = customChapterName;
+                        }
+
+                        // 生成标题
+                        let title = `${courseName}`;
+                        if (chapterName) {
+                            title += `-${chapterName}`;
+                        }
+
+                        // 如果是已有章节，查询该章节已有多少条学习记录
+                        if (selectedCourseId && selectedChapterId) {
+                            const recordsRes = await getStudyRecordList({ chapterId: selectedChapterId });
+                            if (recordsRes.success && recordsRes.data) {
+                                const recordCount = recordsRes.data.length;
+                                if (recordCount > 0) {
+                                    // 不是第一次录制，添加序号 n+1
+                                    title += `-${recordCount + 1}`;
+                                }
+                            }
+                        }
+
+                        // 打开弹窗前重置音频播放状态
+                        setIsPopupPlaying(false);
+                        setPopupCurrentTime(0);
+                        setRecordTitle(title);
                         setShowSaveConfirm(true);
                     }}
                     className="bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg active:scale-95 transition-transform"
@@ -584,14 +1065,113 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
                       </div>
                       <div className="text-sm text-slate-500 space-y-1">
                           <p>课程：{courseName}</p>
+                          {/* 如果是自定义课程，显示章节输入框 */}
+                          {!selectedCourseId && courseName && (
+                            <div className="mt-2">
+                              <label className="block text-xs font-medium text-slate-600 mb-1">章节（新建）</label>
+                              <input
+                                  type="text"
+                                  value={customChapterName}
+                                  onChange={(e) => setCustomChapterName(e.target.value)}
+                                  placeholder="请输入章节名称"
+                                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                              />
+                            </div>
+                          )}
+                          {selectedCourseId && <p>章节：{chapters.find(c => c.id === selectedChapterId)?.name || '请选择章节'}</p>}
                           <p>时长：{formatTime(duration)}</p>
                           {recordedAudioUrl && <p className="text-green-600">已录制音频</p>}
+                          {uploadedImages.length > 0 && (
+                            <p className="text-blue-600">已上传 {uploadedImages.length} 张图片</p>
+                          )}
+                          {uploadedDocument && (
+                            <p className="text-purple-600">已上传文档：{uploadedDocument.originalName}</p>
+                          )}
                           {noteText && <p>笔记字数：{noteText.length}</p>}
                       </div>
-                      {/* 录音预览 */}
+                      {/* 录音预览 - 自定义播放器 */}
                       {recordedAudioUrl && (
-                        <div className="mt-3">
-                          <audio controls src={recordedAudioUrl} className="w-full h-8" />
+                        <div className="mt-3 bg-slate-50 rounded-lg p-3">
+                          {/* 隐藏的 audio 元素 */}
+                          <audio
+                            ref={popupAudioRef}
+                            src={recordedAudioUrl}
+                            preload="auto"
+                            onTimeUpdate={() => {
+                              if (popupAudioRef.current) {
+                                setPopupCurrentTime(popupAudioRef.current.currentTime);
+                              }
+                            }}
+                            onLoadedMetadata={() => {
+                              console.log('loadedmetadata triggered, duration:', popupAudioRef.current?.duration);
+                              if (popupAudioRef.current) {
+                                setPopupDuration(popupAudioRef.current.duration || 0);
+                              }
+                            }}
+                            onEnded={() => setIsPopupPlaying(false)}
+                          />
+
+                          <div className="flex items-center space-x-3">
+                            {/* 播放/暂停按钮 */}
+                            <button
+                              onClick={() => {
+                                if (popupAudioRef.current) {
+                                  if (isPopupPlaying) {
+                                    popupAudioRef.current.pause();
+                                  } else {
+                                    popupAudioRef.current.play();
+                                  }
+                                  setIsPopupPlaying(!isPopupPlaying);
+                                }
+                              }}
+                              className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white hover:bg-blue-700 transition-colors flex-shrink-0"
+                            >
+                              {isPopupPlaying ? <Pause size={18} /> : <Play size={18} className="ml-0.5" />}
+                            </button>
+
+                            {/* 进度条和时间 */}
+                            <div className="flex-1 min-w-0">
+                              {/* 进度条 */}
+                              <div
+                                className="h-1.5 bg-slate-200 rounded-full cursor-pointer relative group"
+                                onClick={(e) => {
+                                  if (popupAudioRef.current && popupDuration) {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const percent = (e.clientX - rect.left) / rect.width;
+                                    popupAudioRef.current.currentTime = percent * popupDuration;
+                                  }
+                                }}
+                              >
+                                <div
+                                  className="h-full bg-blue-500 rounded-full transition-all"
+                                  style={{ width: popupDuration ? `${(popupCurrentTime / popupDuration) * 100}%` : '0%' }}
+                                />
+                              </div>
+                              {/* 时间显示：已播放/总时长 */}
+                              <div className="flex justify-between text-xs text-slate-500 mt-1">
+                                <span>{formatTime(popupCurrentTime)}</span>
+                                <span>/ {formatTime(popupDuration)}</span>
+                              </div>
+                            </div>
+
+                            {/* 下载按钮 - 一直可点击 */}
+                            <button
+                              onClick={() => {
+                                if (recordedAudioUrl) {
+                                  const a = document.createElement('a');
+                                  a.href = recordedAudioUrl;
+                                  a.download = `录音_${new Date().toISOString().slice(0, 10)}.webm`;
+                                  document.body.appendChild(a);
+                                  a.click();
+                                  document.body.removeChild(a);
+                                }
+                              }}
+                              className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex-shrink-0"
+                              title="下载录音"
+                            >
+                              <Download size={18} />
+                            </button>
+                          </div>
                         </div>
                       )}
                   </div>
@@ -604,7 +1184,7 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
                       </button>
                       <button
                           onClick={handleSaveRecord}
-                          disabled={!recordTitle.trim() || loading}
+                          disabled={!recordTitle.trim() || loading || (!selectedCourseId && !customChapterName.trim())}
                           className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                       >
                           {loading ? <Loader2 className="animate-spin" size={18} /> : '保存'}
@@ -628,7 +1208,7 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
               <ChevronDown size={20} />
           </div>
         </div>
-        {/* 章节选择 */}
+        {/* 章节选择 - 数据库课程 */}
         {selectedCourseId && (
           <div
             className="flex items-center cursor-pointer mt-2 active:opacity-70 transition-opacity group"
@@ -644,6 +1224,18 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
             )}
           </div>
         )}
+        {/* 章节输入 - 自定义课程 */}
+        {!selectedCourseId && courseName && (
+          <div className="mt-2">
+            <input
+              type="text"
+              value={customChapterName}
+              onChange={(e) => setCustomChapterName(e.target.value)}
+              placeholder="输入章节名称"
+              className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        )}
       </div>
 
       {/* 【3】AI 语音采集区 */}
@@ -657,33 +1249,120 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
                     <span className="text-sm font-bold text-slate-700">AI 语义音频流</span>
                 </div>
                 <div className={`flex items-center space-x-1.5 ${isRecording ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-100'} px-3 py-1 rounded-full border transition-colors`}>
-                    <Zap size={10} className={`${isRecording ? 'text-blue-500 fill-blue-500' : 'text-slate-300'}`} />
+                    <Zap size={10} className={`${isRecording || isTranscribing ? 'text-blue-500 fill-blue-500' : 'text-slate-300'}`} />
                     <span className={`text-[9px] font-bold ${isRecording ? 'text-blue-600' : 'text-slate-400'}`}>
-                        {isRecording ? '正在捕获重点' : '就绪'}
+                        {isRecording ? (isTranscribing ? '实时转写中' : '正在录音') : (transcription ? '转写完成' : '就绪')}
                     </span>
                 </div>
             </div>
 
-            {/* 音频波形图动画 */}
-            <div className="flex items-end justify-between h-10 mb-2 px-2">
-                {[...Array(32)].map((_, i) => (
-                    <div 
-                        key={i} 
-                        className={`w-1 rounded-full transition-all duration-300 ${isRecording ? 'bg-blue-400/60' : 'bg-slate-200'}`}
-                        style={{ 
-                            height: isRecording ? `${Math.random() * 80 + 20}%` : '10%',
-                            backgroundColor: i === 12 || i === 22 ? (isRecording ? '#EF4444' : '#CBD5E1') : '',
-                        }}
-                    >
+            {/* 音频声浪动画 - 中间对称设计 */}
+            <div className="relative h-12 mb-2 px-2">
+                {/* 中间基准线 */}
+                <div className="absolute left-0 right-0 top-1/2 h-0.5 bg-slate-100 -translate-y-1/2" />
+
+                {/* 波形从中间向两边扩散 */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="flex items-end justify-center gap-[2px] h-full">
+                        {/* 左边 - 从中间向左 */}
+                        {audioLevels.slice(0, 16).reverse().map((level, i) => {
+                            const index = 15 - i;  // 反转索引
+                            const minHeight = 4;
+                            const maxAddHeight = 44;
+                            const height = isRecording ? (minHeight + level * maxAddHeight) : minHeight;
+                            const isPeak = isRecording && level > 0.6;
+                            const distanceFromCenter = i / 15;  // 离中心越远渐变越弱
+
+                            return (
+                                <div
+                                    key={`left-${index}`}
+                                    className="w-1.5 rounded-full transition-all duration-75"
+                                    style={{
+                                        height: `${height}%`,
+                                        background: isRecording
+                                            ? `linear-gradient(to top, rgba(239, 68, 68, ${0.8 - distanceFromCenter * 0.3}), rgba(59, 130, 246, ${0.9 - distanceFromCenter * 0.4}))`
+                                            : 'rgba(203, 213, 225, 0.5)',
+                                        boxShadow: isPeak ? '0 0 8px rgba(239, 68, 68, 0.5)' : 'none',
+                                    }}
+                                />
+                            );
+                        })}
+
+                        {/* 中心点 */}
+                        <div
+                            className={`w-1.5 h-1.5 rounded-full mx-0.5 transition-all duration-300 ${isRecording ? 'bg-blue-500 scale-125' : 'bg-slate-300'}`}
+                        />
+
+                        {/* 右边 - 从中间向右 */}
+                        {audioLevels.slice(16).map((level, i) => {
+                            const index = i;
+                            const minHeight = 4;
+                            const maxAddHeight = 44;
+                            const height = isRecording ? (minHeight + level * maxAddHeight) : minHeight;
+                            const isPeak = isRecording && level > 0.6;
+                            const distanceFromCenter = i / 15;
+
+                            return (
+                                <div
+                                    key={`right-${index}`}
+                                    className="w-1.5 rounded-full transition-all duration-75"
+                                    style={{
+                                        height: `${height}%`,
+                                        background: isRecording
+                                            ? `linear-gradient(to top, rgba(239, 68, 68, ${0.8 - distanceFromCenter * 0.3}), rgba(59, 130, 246, ${0.9 - distanceFromCenter * 0.4}))`
+                                            : 'rgba(203, 213, 225, 0.5)',
+                                        boxShadow: isPeak ? '0 0 8px rgba(239, 68, 68, 0.5)' : 'none',
+                                    }}
+                                />
+                            );
+                        })}
                     </div>
-                ))}
+                </div>
+
+                {/* 录音时的脉冲动画 */}
+                {isRecording && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                    </div>
+                )}
             </div>
 
-            <div className="text-center">
-                <p className={`text-[10px] font-medium text-slate-400 ${isRecording ? 'animate-pulse' : ''}`}>
-                    {isRecording ? '正在生成语义标记点...' : '等待开始录制'}
-                </p>
-            </div>
+            {/* 转写结果显示区域 */}
+            {(transcription || isTranscribing) && (
+                <div className="mt-2 p-2 bg-slate-50 rounded-lg max-h-20 overflow-y-auto">
+                    <p className={`text-xs text-slate-600 ${isTranscribing ? 'animate-pulse' : ''}`}>
+                        {transcription || (isTranscribing ? '正在识别语音...' : '')}
+                    </p>
+                </div>
+            )}
+
+            {/* 将转写添加到随心记的按钮 */}
+            {transcription && !isRecording && (
+                <button
+                    onClick={() => setNoteText(prev => prev + (prev ? '\n' : '') + transcription)}
+                    className="mt-2 text-xs text-blue-500 hover:text-blue-600 flex items-center space-x-1"
+                >
+                    <Type size={12} />
+                    <span>添加到随心记</span>
+                </button>
+            )}
+
+            {/* 不支持语音识别的提示 */}
+            {!transcriptionSupported && !isRecording && (
+                <div className="text-center">
+                    <p className="text-[10px] font-medium text-slate-400">
+                        等待开始录制
+                    </p>
+                </div>
+            )}
+
+            {isRecording && (
+                <div className="text-center">
+                    <p className={`text-[10px] font-medium text-slate-400 ${isRecording ? 'animate-pulse' : ''}`}>
+                        {isTranscribing ? '正在实时转写...' : '正在录音...'}
+                    </p>
+                </div>
+            )}
         </div>
       </div>
 
@@ -738,9 +1417,9 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
 
       {/* 【5】多模态采集入口 - 精确调整 mb 使其底端位于暂停按钮上方 3px */}
       <div className="px-6 mb-[131px] z-10 grid grid-cols-2 gap-3">
-        {/* 拍摄入口 - 点击上传图片 */}
+        {/* 拍摄入口 - 点击直接拍照 */}
         <button
-          onClick={triggerImageUpload}
+          onClick={triggerCameraCapture}
           disabled={imageUploading}
           className="bg-white border border-slate-100 rounded-[24px] h-28 flex flex-col items-center justify-center space-y-2 active:scale-95 transition-transform shadow-sm disabled:opacity-50"
         >
@@ -753,7 +1432,7 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
             </div>
             <div className="text-center">
                 <div className="text-xs font-bold text-slate-700">拍摄</div>
-                <div className="text-[9px] text-slate-400 tracking-wider">上传图片</div>
+                <div className="text-[9px] text-slate-400 tracking-wider">直接拍摄</div>
             </div>
         </button>
 
@@ -938,6 +1617,20 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
                          <X size={20} />
                      </button>
                  </div>
+
+                 {/* 新建章节按钮 */}
+                 <button
+                     onClick={() => {
+                         const newName = prompt('请输入新章节名称：');
+                         if (newName && newName.trim()) {
+                             createNewChapter(newName.trim());
+                         }
+                     }}
+                     className="w-full mb-4 p-3 border-2 border-dashed border-blue-300 rounded-xl text-blue-600 font-medium hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+                 >
+                     <Plus size={18} />
+                     新建章节
+                 </button>
 
                  {/* 章节列表 */}
                  <div className="flex-1 overflow-y-auto scrollbar-hide space-y-2.5 pb-6">

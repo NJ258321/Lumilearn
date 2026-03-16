@@ -245,12 +245,18 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     }
   }, [todayReview]);
 
-  // P5 - Initialize user state
+  // P5 - Initialize user state - 确保 token 有效
   useEffect(() => {
-    const user = getUser();
-    const loggedIn = isLoggedIn();
-    setCurrentUser(user);
-    setIsLogged(loggedIn);
+    // 立即检查登录状态
+    const timer = setTimeout(() => {
+      const user = getUser();
+      const token = localStorage.getItem('lumilearn_token');
+      const loggedIn = !!token;
+      console.log('[Dashboard] 初始化用户状态:', { user: !!user, loggedIn, hasToken: !!token });
+      setCurrentUser(user);
+      setIsLogged(loggedIn);
+    }, 100);
+    return () => clearTimeout(timer);
   }, []);
 
   // Scroll listener for header shrink effect
@@ -503,30 +509,34 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
   const handleOptimize = async () => {
     setIsOptimizing(true);
+    console.log('[handleOptimize] 开始智能重排');
+    console.log('[handleOptimize] 当前taskGroups:', taskGroups);
+    console.log('[handleOptimize] 当前courses状态:', courses);
     try {
-      // 如果没有任务组，使用所有课程ID
-      let courseIds = taskGroups.map(g => g.courseId);
+      let courseIds: string[] = [];
 
-      // 课程名称到ID的映射（从todayReview获取）
-      if (courseIds.length === 0 && todayReview && todayReview.items.length > 0) {
-        // 从今日复习任务中提取课程名称，然后映射到课程ID
-        const courseNameToId: Record<string, string> = {
-          '高等数学': 'course-001',
-          '程序设计': 'course-002',
-          '思想道德与法治': 'course-003',
-          '线性代数': 'course-004',
-          '普通测量学': 'course-005',
-          '中国近现代史纲要': 'course-006',
-        };
-
-        const courseNames = [...new Set(todayReview.items.map(item => item.courseName))];
-        courseIds = courseNames.map(name => courseNameToId[name]).filter(Boolean);
-        console.log('[handleOptimize] 从todayReview提取courseIds:', courseIds);
+      // 优先从courses状态获取课程ID（这是真实的UUID）
+      if (courses && courses.length > 0) {
+        courseIds = courses.map(c => c.id);
+        console.log('[handleOptimize] 从courses状态获取courseIds:', courseIds);
       }
 
+      // 如果courses状态为空，尝试调用API获取课程列表
       if (courseIds.length === 0) {
-        // 使用种子数据中的课程ID
-        courseIds = ['course-001', 'course-002', 'course-003', 'course-004', 'course-005', 'course-006'];
+        console.log('[handleOptimize] 尝试获取课程列表...');
+        const coursesResponse = await getCourseList();
+        console.log('[handleOptimize] 课程列表响应:', coursesResponse);
+        if (coursesResponse.success && coursesResponse.data && coursesResponse.data.length > 0) {
+          courseIds = coursesResponse.data.map(c => c.id);
+          console.log('[handleOptimize] 从API获取courseIds:', courseIds);
+        }
+      }
+
+      // 如果仍然没有课程ID，显示错误
+      if (courseIds.length === 0) {
+        alert('没有找到可优化的课程，请先添加课程');
+        setIsOptimizing(false);
+        return;
       }
 
       const requestData = {
@@ -673,9 +683,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         fetchDashboardStats();
       } else {
         console.log('[handleOptimize] 响应失败或无数据:', response);
+        // 显示后端返回的错误信息
+        if (response.error) {
+          alert('智能重排失败: ' + response.error);
+        }
       }
     } catch (err) {
       console.error('智能优化失败', err);
+      alert('智能重排请求失败，请检查网络连接');
     } finally {
       setIsOptimizing(false);
     }

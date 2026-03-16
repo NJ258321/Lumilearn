@@ -211,6 +211,55 @@ export async function downloadAudioSegment(
   }
 }
 
+// =====================================================
+// 语义分析类型定义
+// =====================================================
+
+// 语义标记点
+export interface SemanticMark {
+  timestamp: number
+  content: string
+  type: string
+  importance: number
+}
+
+// 语义分析响应
+export interface SemanticAnalysisResult {
+  studyRecordId: string
+  courseName: string
+  chapterName: string
+  audioDuration: number
+  transcription: string
+  transcriptionSegments: Array<{
+    start: number
+    end: number
+    text: string
+  }>
+  semanticMarks: SemanticMark[]
+  hasTranscription: boolean
+  hasSemanticAnalysis: boolean
+  message?: string
+  requires配置?: {
+    OPENAI_API_KEY?: string
+    GEMINI_API_KEY?: string
+  }
+}
+
+/**
+ * AI语义分析 - 生成智能标记点
+ * @param id 学习记录ID
+ */
+export async function semanticAnalysis(
+  id: string
+): Promise<ApiResponse<SemanticAnalysisResult>> {
+  try {
+    return await api.post<SemanticAnalysisResult>(`${AUDIO_BASE}/${id}/semantic-analysis`)
+  } catch (error) {
+    console.error('语义分析失败:', error)
+    return { success: false, error: '语义分析失败' }
+  }
+}
+
 /**
  * 格式化时长为 mm:ss 或 hh:mm:ss
  * @param seconds 秒数
