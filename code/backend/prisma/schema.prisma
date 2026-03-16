@@ -151,6 +151,7 @@ model Mistake {
   courseId         String
   knowledgePointId String
   question         String
+  options          String?
   userAnswer       String
   correctAnswer    String
   reason           String?
@@ -384,7 +385,7 @@ model Question {
 // 答题记录
 model AnswerRecord {
   id            String  @id @default(uuid())
-  userId        String
+  userId        String? // 可选，不关联用户
   questionId    String
   examSessionId String?
 
@@ -400,8 +401,8 @@ model AnswerRecord {
   aiAnalysis      String? // AI 分析结果
   suggestedReview String? // 建议复习内容
 
-  // 关联
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 关联（可选）
+  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   question    Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
   examSession ExamSession? @relation(fields: [examSessionId], references: [id], onDelete: SetNull)
 
@@ -414,7 +415,7 @@ model AnswerRecord {
 // 考试/练习会话
 model ExamSession {
   id       String  @id @default(uuid())
-  userId   String
+  userId   String?
   courseId String?
 
   // 会话信息
@@ -439,8 +440,8 @@ model ExamSession {
   // 状态
   status String @default("IN_PROGRESS") // IN_PROGRESS | COMPLETED | ABANDONED
 
-  // 关联
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 关联（可选）
+  user   User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   course Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)
 
   // 答题记录

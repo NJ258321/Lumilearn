@@ -5,18 +5,41 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Clock, Check, X, ChevronLeft, ChevronRight, Loader2, Sparkles, Zap, Target, Trophy } from 'lucide-react';
 import { AppView } from '../types';
-import { submitAnswer, submitExam, createSession } from '../src/api/exams';
+import { submitAnswer, submitExam, createSession, createMistake } from '../src/api/exams';
 import type { Question, SubmitAnswerResponse, ChallengeMode } from '../src/types/api';
+
+// 辅助函数：处理 options 的两种格式
+// 格式1: {A: "选项A", B: "选项B"} - 对象格式
+// 格式2: [{A: "选项A"}, {B: "选项B"}] - 数组格式
+const parseOptions = (options: any): Array<{ key: string; value: string }> => {
+  if (!options) return [];
+
+  if (Array.isArray(options)) {
+    // 数组格式
+    return options.map((opt) => {
+      const key = Object.keys(opt)[0];
+      const value = Object.values(opt)[0];
+      return { key, value: String(value) };
+    });
+  }
+
+  // 对象格式
+  return Object.entries(options).map(([key, value]) => ({
+    key,
+    value: String(value),
+  }));
+};
 
 interface ExamProps {
   onNavigate: (view: AppView, data?: any) => void;
   examData?: {
-    type: 'daily' | 'challenge' | 'random' | 'session' | 'personalized';
+    type: 'daily' | 'challenge' | 'random' | 'session' | 'personalized' | 'ai-generated';
     question?: Question;
     questions?: Question[];
     sessionId?: string;
     courseId?: string;
     mode?: ChallengeMode;
+    title?: string;
   };
 }
 
@@ -87,19 +110,45 @@ const Exam: React.FC<ExamProps> = ({ onNavigate, examData }) => {
       // Create session if not exists
       let sid = sessionId;
       if (!sid) {
-        const sessionRes = await createSession({
-          type: examData?.type === 'daily' ? 'PRACTICE' : 'RANDOM_TEST',
-          title: '练习',
-          questionIds: questions.map((q) => q.id),
+        // 根据考试类型确定 session type
+        let sessionType = 'RANDOM_TEST';
+        if (examData?.type === 'daily') sessionType = 'PRACTICE';
+        else if (examData?.type === 'ai-generated') sessionType = 'AI_GENERATED';
+
+        const questionIds = questions.map((q) => q.id).filter(Boolean);
+        console.log('[Exam] Creating session with data:', {
+          type: sessionType,
+          courseId: examData?.courseId,
+          title: examData?.title || '练习',
+          questionIds,
+          questionsCount: questions.length,
+          firstQuestionId: questionIds[0],
+          firstQuestion: questions[0]
         });
-        if (sessionRes.success && sessionRes.data) {
+
+        const sessionRes = await createSession({
+          type: sessionType as any,
+          courseId: examData?.courseId,
+          title: examData?.title || '练习',
+          questionIds,
+        });
+
+        console.log('[Exam] Session response:', sessionRes);
+
+        if (!sessionRes.success) {
+          console.error('[Exam] Create session failed:', sessionRes.error);
+          setLoading(false);
+          return;
+        }
+
+        if (sessionRes.data) {
           sid = sessionRes.data.id;
           setSessionId(sid);
         }
       }
 
       if (!sid) {
-        console.error('Failed to create session');
+        console.error('Failed to create session - no session id');
         setLoading(false);
         return;
       }
@@ -117,6 +166,36 @@ const Exam: React.FC<ExamProps> = ({ onNavigate, examData }) => {
       if (response.success && response.data) {
         setResult(response.data);
         setSubmitted(true);
+
+        // 如果回答错误，记录错题
+        if (response.data.isCorrect === false) {
+          const courseId = examData?.courseId || currentQuestion.courseId;
+          const knowledgePointId = currentQuestion.knowledgePointId;
+
+          if (courseId && knowledgePointId) {
+            const userAnswerStr = typeof selectedAnswer === 'string' ? selectedAnswer : JSON.stringify(selectedAnswer);
+            const correctAnswerStr = typeof response.data.correctAnswer === 'string'
+              ? response.data.correctAnswer
+              : JSON.stringify(response.data.correctAnswer);
+
+            try {
+              await createMistake({
+                courseId,
+                knowledgePointId,
+                question: currentQuestion.content,
+                options: currentQuestion.options,
+                userAnswer: userAnswerStr,
+                correctAnswer: correctAnswerStr,
+                reason: currentQuestion.explanation,
+              });
+              console.log('[Exam] 错题已记录');
+            } catch (err) {
+              console.error('记录错题失败:', err);
+            }
+          } else {
+            console.warn('[Exam] 缺少 courseId 或 knowledgePointId，无法记录错题');
+          }
+        }
       }
     } catch (err) {
       console.error('Submit answer error:', err);
@@ -276,9 +355,9 @@ const Exam: React.FC<ExamProps> = ({ onNavigate, examData }) => {
 
         {/* Options */}
         <div className="space-y-2">
-          {currentQuestion.options?.map((option, index) => {
-            const optionKey = Object.keys(option)[0];
-            const optionValue = Object.values(option)[0];
+          {parseOptions(currentQuestion.options).map((optionItem, index) => {
+            const optionKey = optionItem.key;
+            const optionValue = optionItem.value;
             const isSelected = Array.isArray(selectedAnswer)
               ? selectedAnswer.includes(optionKey)
               : selectedAnswer === optionKey;

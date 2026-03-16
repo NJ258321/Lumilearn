@@ -187,6 +187,7 @@ export enum AppView {
   EXAM = 'EXAM',
   EXAM_RESULT = 'EXAM_RESULT',
   MISTAKES = 'MISTAKES',
+  MISTAKE_DETAIL = 'MISTAKE_DETAIL',
   // 备考日历
   EXAM_CALENDAR = 'EXAM_CALENDAR',
   // 薄弱点详情

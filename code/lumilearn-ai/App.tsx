@@ -19,6 +19,7 @@ import Auth from './pages/Auth';
 import Settings from './pages/Settings';
 import Exam from './pages/Exam';
 import Mistakes from './pages/Mistakes';
+import MistakeDetail from './pages/MistakeDetail';
 import ExamCalendar from './pages/ExamCalendar';
 import WeakPoints from './pages/WeakPoints';
 import { AppView } from './types';
@@ -82,11 +83,12 @@ const App: React.FC = () => {
       case AppView.KNOWLEDGE_MANAGER:
         return <KnowledgeManager onNavigate={navigate} />;
       case AppView.COURSE_DETAIL_STUDY:
+      case AppView.COURSE_DETAIL_REVIEW:
         return <CourseDetailStudy onNavigate={navigate} courseId={currentCourseId} studyMode={courseStudyMode} />;
       case AppView.AGENT:
         return <Agent onBack={() => navigate(AppView.ANALYSIS)} />;
       case AppView.DRILL:
-        return <Drill onNavigate={navigate} />;
+        return <Drill onNavigate={navigate} courseId={viewData?.courseId || currentCourseId} />;
       case AppView.PRACTICE_LIST:
         return <PracticeList onNavigate={navigate} />;
       case AppView.ANALYSIS:
@@ -109,6 +111,8 @@ const App: React.FC = () => {
         return <Exam onNavigate={navigate} examData={viewData} />;
       case AppView.MISTAKES:
         return <Mistakes onNavigate={navigate} />;
+      case AppView.MISTAKE_DETAIL:
+        return <MistakeDetail onNavigate={navigate} />;
       case AppView.EXAM_CALENDAR:
         return <ExamCalendar onBack={() => navigate(AppView.DASHBOARD)} courseId={viewData?.courseId} />;
       case AppView.WEAK_POINTS:
@@ -119,10 +123,12 @@ const App: React.FC = () => {
   };
 
   const showNav = [
-    AppView.DASHBOARD, 
-    AppView.COURSES, 
-    AppView.ANALYSIS, 
-    AppView.PRACTICE_LIST
+    AppView.DASHBOARD,
+    AppView.COURSES,
+    AppView.ANALYSIS,
+    AppView.PRACTICE_LIST,
+    AppView.COURSE_DETAIL_STUDY,
+    AppView.COURSE_DETAIL_REVIEW,
   ].includes(currentView);
 
   return (

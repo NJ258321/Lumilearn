@@ -8,7 +8,13 @@
       "Bash(taskkill:*)",
       "Bash(npx prisma:*)",
       "Bash(npx tsc:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(tasklist:*)",
+      "Bash(__NEW_LINE_7ee1fc45ad1bf53e__ curl:*)",
+      "Bash(npx tsx:*)",
+      "Bash(sqlite3:*)",
+      "Bash(rm:*)",
+      "Bash(ls:*)"
     ]
   }
 }

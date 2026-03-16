@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Sparkles, Bot, ArrowLeft } from 'lucide-react';
 import { Message } from '../types';
-import { createChatSession, sendMessage } from '../services/geminiService';
+import { sendChatMessage } from '../services/aiChatService';
 import { COLORS } from '../constants';
 
 interface AgentProps {
@@ -15,12 +15,7 @@ const Agent: React.FC<AgentProps> = ({ onBack }) => {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const chatSessionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    chatSessionRef.current = createChatSession();
-  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -34,8 +29,8 @@ const Agent: React.FC<AgentProps> = ({ onBack }) => {
     setInput('');
     setIsLoading(true);
 
-    const responseText = await sendMessage(chatSessionRef.current, userMsg.text);
-    
+    const responseText = await sendChatMessage(userMsg.text);
+
     const botMsg: Message = { id: (Date.now() + 1).toString(), role: 'model', text: responseText };
     setMessages(prev => [...prev, botMsg]);
     setIsLoading(false);
