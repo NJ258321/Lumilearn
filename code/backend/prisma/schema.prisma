@@ -89,11 +89,13 @@ model StudyRecord {
   chapterId String
   title     String // 录音标题
   date      DateTime
-  audioUrl  String
-  duration  Int // 秒
-  status    String   @default("RECORDING") // RECORDING | PROCESSING | COMPLETED | FAILED
-  notes     String   @default("")
-  imageUrls String   @default("[]") // JSON array of image URLs
+  audioUrl      String?
+  documentUrl   String?  // PPT/PDF 文档 URL（原始文件）
+  pptContent    String   @default("{}") // JSON: PPT extracted text content
+  duration      Int // 秒
+  status        String   @default("RECORDING") // RECORDING | PROCESSING | COMPLETED | FAILED
+  notes         String   @default("")
+  imageUrls     String   @default("[]") // JSON array of image URLs (board/notes photos)
   createdAt DateTime @default(now())
 
   course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
@@ -115,6 +117,7 @@ model TimeMark {
   pptPage          Int? // PPT页码
   content          String? // 笔记内容
   imageUrl         String? // 图片/板书URL
+  aiAnalysis       String? // AI分析结果（JSON格式存储）
   createdAt        DateTime @default(now())
 
   studyRecord    StudyRecord     @relation(fields: [studyRecordId], references: [id], onDelete: Cascade)

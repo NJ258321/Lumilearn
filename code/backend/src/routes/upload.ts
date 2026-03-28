@@ -19,6 +19,19 @@ import {
 
 const router = Router()
 
+/**
+ * GET /api/upload/pdf-status - 检查 PDF 支持状态
+ */
+router.get('/pdf-status', async (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    data: {
+      supported: true,
+      message: 'PDF upload is supported'
+    }
+  });
+});
+
 // 确保上传目录存在
 ensureUploadDir().catch(console.error)
 
@@ -146,7 +159,7 @@ router.post('/image', imageUpload.single('image'), async (req: Request, res: Res
 })
 
 /**
- * Task-1.3.3: POST /api/upload/document - 上传文档（PDF、PPT、Word）
+ * Task-1.3.3: POST /api/upload/document - 上传文档（仅PDF）
  */
 router.post('/document', documentUpload.single('document'), async (req: Request, res: Response) => {
   try {
@@ -159,9 +172,19 @@ router.post('/document', documentUpload.single('document'), async (req: Request,
       } as ApiResponse<undefined>)
     }
 
+    // 只允许PDF
+    if (file.mimetype !== 'application/pdf') {
+      return res.status(400).json({
+        success: false,
+        error: '仅支持PDF格式，PPT请自行转换为PDF后上传'
+      } as ApiResponse<undefined>)
+    }
+
+    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8')
+
     const responseData: UploadResponse = {
       filename: file.filename,
-      originalName: Buffer.from(file.originalname, 'latin1').toString('utf8'),
+      originalName,
       size: file.size,
       mimetype: file.mimetype,
       url: getFileUrl(file.filename)
@@ -170,7 +193,7 @@ router.post('/document', documentUpload.single('document'), async (req: Request,
     res.status(201).json({
       success: true,
       data: responseData
-    } as ApiResponse<UploadResponse>)
+    } as ApiResponse<typeof responseData>)
   } catch (error: any) {
     console.error('Error uploading document:', error)
     res.status(500).json({

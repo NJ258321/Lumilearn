@@ -12,6 +12,7 @@
     "@google/genai": "^1.38.0",
     "d3": "^7.8.5",
     "lucide-react": "^0.563.0",
+    "pptx-parser": "^1.1.7-beta.9",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "recharts": "^3.7.0"

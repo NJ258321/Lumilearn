@@ -55,13 +55,25 @@ import { createStudyRecord, getStudyRecordList } from '../src/api/studyRecords';
 import { uploadAudio, uploadImage, uploadDocument, deleteFile } from '../src/api/upload';
 import { semanticAnalysis } from '../src/api/audio';
 import { batchCreateTimeMarks } from '../src/api/timeMarks';
+import { convertPPT } from '../src/api/pptConverter';
+import { API_CONFIG } from '../src/api/request';
+
+// 获取完整图片URL
+const getFullImageUrl = (url: string) => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  return `${API_CONFIG.BASE_URL}${url}`;
+};
 
 interface RecorderProps {
   onBack: () => void;
+  onSaveSuccess?: (recordId: string) => void;
   initialCourseName?: string;
 }
 
-const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
+const Recorder: React.FC<RecorderProps> = ({ onBack, onSaveSuccess, initialCourseName }) => {
   // 修改初始状态：默认为暂停，计时从 0 开始
   const [isRecording, setIsRecording] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -289,20 +301,14 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
     // 定义允许的文件类型
     const allowedAudioTypes = ['audio/mpeg', 'audio/wav', 'audio/m4a', 'audio/x-m4a', 'audio/mp3', 'audio/webm', 'audio/ogg'];
     const allowedDocumentTypes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-powerpoint',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      'application/pdf'  // 只接受PDF，PPT请用户自行转换
     ];
 
     const isAudio = allowedAudioTypes.includes(file.type);
     const isDocument = allowedDocumentTypes.includes(file.type);
 
     if (!isAudio && !isDocument) {
-      setError('仅支持音频（MP3、WAV、M4A、WebM）或文档（PDF、Word、PowerPoint、Excel）格式');
+      setError('音频支持 MP3、WAV、M4A、WebM；文档仅支持 PDF（PPT请先转换为PDF）');
       return;
     }
 
@@ -331,7 +337,11 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
             url: response.data.url,
             originalName: response.data.originalName
           });
-          showSuccess('文档上传成功！');
+          
+          // PDF直接保存URL
+          console.log('[Recorder] PDF uploaded:', response.data.url);
+          setHasPDF(true);
+          showSuccess('PDF 上传成功！');
         } else {
           setError(response.error || '上传失败');
         }
@@ -340,7 +350,12 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
         const response = await uploadAudio(file);
         if (response.success && response.data) {
           setRecordedAudioUrl(response.data.url);
-          showSuccess('音频上传成功！');
+          // 对于上传的音频文件，设置一个默认时长（用于显示保存按钮）
+          // 实际时长会在后端分析时更新
+          if (duration === 0) {
+            setDuration(1); // 设置1秒作为标记，表示有音频
+          }
+          showSuccess('音频上传成功！请点击保存按钮完成分析');
         } else {
           setError(response.error || '上传失败');
         }
@@ -454,6 +469,22 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
   const documentInputRef = useRef<HTMLInputElement>(null);
   const [documentUploading, setDocumentUploading] = useState(false);
   const [uploadedDocument, setUploadedDocument] = useState<{ url: string; originalName: string } | null>(null);
+  const [hasPDF, setHasPDF] = useState(false);  // 是否上传了PDF课件
+
+  // 转换 PPT 为图片（调用后端 API）
+  const convertAndUploadPPT = async (serverFilePath: string): Promise<string[]> => {
+    console.log('[Recorder] Converting PPT via backend API:', serverFilePath);
+    
+    const result = await convertPPT(serverFilePath);
+    
+    if (!result.success || !result.data) {
+      console.error('[Recorder] PPT conversion failed:', result.error);
+      throw new Error(result.error || 'PPT conversion failed');
+    }
+    
+    console.log(`[Recorder] PPT converted: ${result.data.pageCount} pages, ${result.data.imageUrls.length} images uploaded`);
+    return result.data.imageUrls;
+  };
 
   // 处理文档上传
   const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -483,13 +514,18 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
     setError(null);
 
     try {
+      // 1. 上传原始文档
       const response = await uploadDocument(file);
       if (response.success && response.data) {
         setUploadedDocument({
           url: response.data.url,
           originalName: response.data.originalName
         });
-        showSuccess('文档上传成功！');
+        
+        // 2. PDF上传成功
+        console.log('[Recorder] PDF uploaded:', response.data.url);
+        setHasPDF(true);
+        showSuccess('PDF 上传成功！');
       } else {
         setError(response.error || '上传失败');
       }
@@ -522,6 +558,7 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       }
     }
     setUploadedDocument(null);
+    setPptContent(null);
   };
 
   // Save Study Record Handler
@@ -614,52 +651,58 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       // 获取上传的图片URL列表
       const imageUrls = uploadedImages.map(img => img.url);
 
+      // 合并笔记文本和语音转写文本
+      const combinedNotes = [transcription, noteText].filter(Boolean).join('\n\n---\n\n');
+      
+      console.log('[Recorder] Saving study record with:');
+      console.log('[Recorder] - transcription length:', transcription?.length || 0);
+      console.log('[Recorder] - noteText length:', noteText?.length || 0);
+      console.log('[Recorder] - combinedNotes length:', combinedNotes?.length || 0);
+      console.log('[Recorder] - combinedNotes preview:', combinedNotes?.substring(0, 200));
+      
       const response = await createStudyRecord({
         courseId: finalCourseId,
         chapterId: finalChapterId,
         title: recordTitle,
         date: new Date().toISOString(),
         audioUrl: audioUrl || undefined,
-        notes: noteText || undefined,
+        documentUrl: uploadedDocument?.url || undefined,
+        notes: combinedNotes || undefined,
         duration: duration,
-        status: audioUrl ? 'COMPLETED' : 'RECORDING',
+        status: (audioUrl || uploadedDocument || hasPDF) ? 'COMPLETED' : 'RECORDING',
         imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
       });
 
       if (response.success) {
-        // 保存成功后，进行AI语义分析
+        // 保存成功后，进行多模态AI分析
         const recordId = response.data?.id;
-        if (recordId && audioUrl) {
+        const hasAudio = !!audioUrl;
+        const hasDocument = !!uploadedDocument;
+        const hasImages = uploadedImages.length > 0;
+        
+        console.log('[Recorder] 学习记录保存成功，recordId:', recordId);
+        console.log('[Recorder] 内容统计:', { audio: hasAudio, document: hasDocument, images: hasImages });
+        
+        if (recordId && (hasAudio || hasDocument || hasImages)) {
           try {
-            console.log('[Recorder] 开始AI语义分析，学习记录ID:', recordId);
-            const analysisRes = await semanticAnalysis(recordId);
+            console.log('[Recorder] 开始多模态分析，学习记录ID:', recordId);
+            
+            // 导入多模态分析API
+            const { analyzeMultimodal } = await import('../src/api/multimodal');
+            const analysisRes = await analyzeMultimodal(recordId);
 
-            if (analysisRes.success && analysisRes.data?.semanticMarks?.length > 0) {
-              console.log('[Recorder] 语义分析完成，标记点数:', analysisRes.data.semanticMarks.length);
-
-              // 将语义标记点批量创建为时间标记
-              const timeMarksData = analysisRes.data.semanticMarks.map((mark: any) => ({
-                studyRecordId: recordId,
-                type: mark.type === '知识点' ? 'EMPHASIS' :
-                      mark.type === '重点' ? 'EMPHASIS' :
-                      mark.type === '例题' ? 'NOTE' :
-                      mark.type === '小结' ? 'SUMMARY' :
-                      mark.type === '疑问' ? 'QUESTION' : 'NOTE',
-                timestamp: mark.timestamp,
-                content: mark.content,
-              }));
-
-              const batchRes = await batchCreateTimeMarks(timeMarksData);
-              if (batchRes.success) {
-                console.log('[Recorder] 语义标记点已保存，成功创建', timeMarksData.length, '个标记');
-              } else {
-                console.warn('[Recorder] 批量创建标记点失败:', batchRes.error);
-              }
+            if (analysisRes.success && analysisRes.data) {
+              console.log('[Recorder] 多模态分析完成:', {
+                audio: analysisRes.data.audioMarksCount,
+                ppt: analysisRes.data.pptMarksCount,
+                images: analysisRes.data.imageMarksCount,
+                total: analysisRes.data.totalMarks
+              });
             } else {
-              console.log('[Recorder] 语义分析未返回有效标记点:', analysisRes.data);
+              console.warn('[Recorder] 多模态分析失败:', analysisRes.error);
             }
           } catch (analysisErr) {
-            console.error('[Recorder] 语义分析异常:', analysisErr);
+            console.error('[Recorder] 多模态分析异常:', analysisErr);
           }
         }
 
@@ -673,9 +716,16 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
         setRecordedImages([]);
         setDuration(0);
         setImageCount(0);
-        // Navigate back after short delay
+        setHasPDF(false);
+        setUploadedDocument(null);
+        setUploadedImages([]);
+        // Navigate to TimeMachine or back after short delay
         setTimeout(() => {
-          onBack();
+          if (onSaveSuccess && response.data?.id) {
+            onSaveSuccess(response.data.id);
+          } else {
+            onBack();
+          }
         }, 1500);
       } else {
         setError(response.error || '保存失败');
@@ -874,36 +924,112 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
     }
   }, [showSaveConfirm]);
 
-  // 弹窗打开时获取音频时长 - 使用 AudioContext
+  // 获取完整音频 URL（处理相对路径）
+  const getFullAudioUrl = (url: string): string => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    if (url.startsWith('/')) {
+      return `${API_CONFIG.BASE_URL}${url}`;
+    }
+    return url;
+  };
+
+  // 弹窗打开时获取音频时长
   useEffect(() => {
     if (showSaveConfirm && recordedAudioUrl) {
       // 重置状态
       setPopupCurrentTime(0);
       setPopupDuration(0);
 
-      // 使用 AudioContext 获取 blob URL 的准确时长
+      // 使用 audio 元素获取时长（兼容性更好）
       const fetchAudioDuration = async () => {
-        try {
-          const response = await fetch(recordedAudioUrl);
-          const blob = await response.blob();
-          const arrayBuffer = await blob.arrayBuffer();
-          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-          const duration = audioBuffer.duration;
-          console.log('AudioContext duration:', duration);
-          setPopupDuration(duration);
-          audioContext.close();
-        } catch (err) {
-          console.error('获取音频时长失败:', err);
-          // 备用方案：使用 audio 元素
-          if (popupAudioRef.current) {
-            popupAudioRef.current.load();
-            setTimeout(() => {
-              if (popupAudioRef.current && popupAudioRef.current.duration && !isNaN(popupAudioRef.current.duration)) {
-                setPopupDuration(popupAudioRef.current.duration);
-              }
-            }, 500);
+        const audioUrl = getFullAudioUrl(recordedAudioUrl);
+        console.log('[Recorder] 尝试获取音频时长:', audioUrl);
+        
+        const audio = new Audio();
+        
+        // 处理跨域
+        audio.crossOrigin = 'anonymous';
+        audio.src = audioUrl;
+        audio.preload = 'metadata';
+        
+        // 设置超时
+        const timeout = setTimeout(() => {
+          console.warn('[Recorder] 获取音频时长超时');
+          // 如果是 blob URL，尝试通过 fetch 获取
+          if (recordedAudioUrl.startsWith('blob:')) {
+            fetchBlobDuration(recordedAudioUrl);
           }
+        }, 3000);
+        
+        audio.onloadedmetadata = () => {
+          clearTimeout(timeout);
+          if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+            console.log('[Recorder] 音频时长:', audio.duration);
+            setPopupDuration(audio.duration);
+            // 同时更新学习记录时长
+            setDuration(Math.floor(audio.duration));
+          }
+        };
+        
+        audio.oncanplaythrough = () => {
+          clearTimeout(timeout);
+          if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+            console.log('[Recorder] 音频时长 (canplaythrough):', audio.duration);
+            setPopupDuration(audio.duration);
+            setDuration(Math.floor(audio.duration));
+          }
+        };
+        
+        audio.onerror = (e) => {
+          clearTimeout(timeout);
+          console.warn('[Recorder] 无法获取音频时长:', e);
+          // 尝试备用方案
+          fetchBlobDuration(audioUrl);
+        };
+        
+        // 尝试加载
+        audio.load();
+      };
+      
+      // 备用方案：通过 fetch 获取 blob 然后使用 AudioContext
+      const fetchBlobDuration = async (url: string) => {
+        try {
+          const response = await fetch(url);
+          const blob = await response.blob();
+          
+          // 根据文件大小估算时长（假设平均比特率 128kbps）
+          // 128kbps = 16KB/s
+          const estimatedDuration = Math.floor(blob.size / 16000);
+          if (estimatedDuration > 0) {
+            console.log('[Recorder] 估算音频时长:', estimatedDuration);
+            setPopupDuration(estimatedDuration);
+            setDuration(estimatedDuration);
+            return;
+          }
+          
+          // 尝试使用 AudioContext
+          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const arrayBuffer = await blob.arrayBuffer();
+          
+          try {
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            console.log('[Recorder] AudioContext 时长:', audioBuffer.duration);
+            setPopupDuration(audioBuffer.duration);
+            setDuration(Math.floor(audioBuffer.duration));
+          } catch (decodeErr) {
+            console.warn('[Recorder] AudioContext 解码失败，使用估算时长');
+            // 使用估算时长
+            if (estimatedDuration > 0) {
+              setPopupDuration(estimatedDuration);
+              setDuration(estimatedDuration);
+            }
+          } finally {
+            audioContext.close();
+          }
+        } catch (err) {
+          console.error('[Recorder] fetchBlobDuration 失败:', err);
         }
       };
 
@@ -972,8 +1098,8 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
         </div>
 
         <div className="flex items-center space-x-3">
-            {/* 保存按钮 - 当有时长或笔记时显示 */}
-            {(duration > 0 || noteText) && !isRecording && (
+            {/* 保存按钮 - 当有时长、笔记或已上传音频时显示 */}
+            {(duration > 0 || noteText || recordedAudioUrl) && !isRecording && (
                 <button
                     onClick={async () => {
                         // 获取章节名称
@@ -1085,7 +1211,7 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
                             <p className="text-blue-600">已上传 {uploadedImages.length} 张图片</p>
                           )}
                           {uploadedDocument && (
-                            <p className="text-purple-600">已上传文档：{uploadedDocument.originalName}</p>
+                            <p className="text-purple-600">已上传文档：{uploadedDocument.originalName} {hasPDF && '(PDF课件)'}</p>
                           )}
                           {noteText && <p>笔记字数：{noteText.length}</p>}
                       </div>
@@ -1399,11 +1525,20 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
             </div>
             {/* 已上传文档显示 */}
             {uploadedDocument && (
-              <div className="mb-2 p-2 bg-blue-50 rounded-lg flex items-center justify-between">
-                <span className="text-xs text-blue-600 truncate">{uploadedDocument.originalName}</span>
-                <button onClick={removeDocument} className="text-blue-400 hover:text-blue-600">
-                  <X size={14} />
-                </button>
+              <div className="mb-2 p-2 bg-blue-50 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-blue-600 truncate">{uploadedDocument.originalName}</span>
+                  <button onClick={removeDocument} className="text-blue-400 hover:text-blue-600">
+                    <X size={14} />
+                  </button>
+                </div>
+                {/* PDF 标记 */}
+                {hasPDF && (
+                  <div className="mt-2">
+                    <p className="text-[10px] text-blue-500 mb-1">PDF 课件</p>
+                    <p className="text-[10px] text-slate-500">可在时光机中查看完整课件</p>
+                  </div>
+                )}
               </div>
             )}
             <textarea
@@ -1447,9 +1582,13 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
                     {uploadedImages.length > 0 ? (
                       <>
                         <img
-                          src={uploadedImages[uploadedImages.length - 1].url}
+                          src={getFullImageUrl(uploadedImages[uploadedImages.length - 1].url)}
                           className="w-full h-full object-cover"
                           alt="Preview"
+                          onError={(e) => {
+                            console.error('Image load error:', uploadedImages[uploadedImages.length - 1].url);
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
                         />
                         {uploadedImages.length > 1 && (
                           <div className="absolute top-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded">

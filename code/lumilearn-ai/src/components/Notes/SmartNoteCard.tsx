@@ -36,6 +36,7 @@ interface SmartNoteCardProps {
   onUpdate: (mark: TimeMark) => void;
   onDelete: (id: string) => void;
   onAnalyze?: (mark: TimeMark) => void;
+  onClick?: () => void;
 }
 
 const MARK_TYPE_CONFIG: Record<TimeMarkType, { icon: React.ReactNode; label: string; color: string; bgColor: string; borderColor: string }> = {
@@ -100,7 +101,8 @@ const SmartNoteCard: React.FC<SmartNoteCardProps> = ({
   onSeek,
   onUpdate,
   onDelete,
-  onAnalyze
+  onAnalyze,
+  onClick
 }) => {
   const [isExpanded, setIsExpanded] = useState(isActive);
   const [isEditing, setIsEditing] = useState(false);
@@ -185,9 +187,10 @@ const SmartNoteCard: React.FC<SmartNoteCardProps> = ({
 
   return (
     <div
-      className={`relative rounded-2xl border-2 transition-all duration-300 overflow-hidden ${
+      onClick={onClick}
+      className={`relative rounded-2xl border-2 transition-all duration-300 overflow-hidden cursor-pointer ${
         isActive
-          ? `${config.borderColor} ${config.bgColor} shadow-md ring-2 ring-offset-1`
+          ? `${config.borderColor} ${config.bgColor} shadow-md ring-2 ring-offset-1 ring-${config.color.split('-')[1]}-400`
           : isPast
           ? 'bg-white border-slate-100 hover:border-slate-200 hover:shadow-sm'
           : 'bg-slate-50/50 border-slate-100 opacity-70'
@@ -197,7 +200,10 @@ const SmartNoteCard: React.FC<SmartNoteCardProps> = ({
       <div
         className="flex items-center justify-between px-4 py-3"
       >
-        <div className="flex items-center gap-3" onClick={() => onSeek(mark.timestamp)}>
+        <div className="flex items-center gap-3" onClick={(e) => {
+          e.stopPropagation();
+          onSeek(mark.timestamp);
+        }}>
           {/* 序号标识 */}
           <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
             isActive
@@ -212,15 +218,32 @@ const SmartNoteCard: React.FC<SmartNoteCardProps> = ({
             isActive ? config.color : 'text-slate-500'
           }`}>
             <Clock size={14} />
-            {formatTime(mark.timestamp)}
+            {formatTime(mark.timestamp / 1000)}
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* 类型标签 */}
-          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${config.color} ${config.bgColor}`}>
-            {config.icon}
-            {config.label}
+          {/* 多模态标识 */}
+          <div className="flex items-center gap-1">
+            {/* PPT页码 */}
+            {(mark as any).pptPage && (
+              <span className="px-2 py-0.5 bg-purple-100 text-purple-600 text-[10px] font-bold rounded-full">
+                PPT{(mark as any).pptPage}
+              </span>
+            )}
+            
+            {/* 图片标识 */}
+            {(mark as any).imageUrl && (
+              <span className="px-2 py-0.5 bg-green-100 text-green-600 text-[10px] font-bold rounded-full">
+                📷
+              </span>
+            )}
+            
+            {/* 类型标签 */}
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${config.color} ${config.bgColor}`}>
+              {config.icon}
+              {config.label}
+            </div>
           </div>
 
           {/* 展开/收起按钮 */}

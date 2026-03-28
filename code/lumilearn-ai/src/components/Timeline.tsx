@@ -88,18 +88,19 @@ const Timeline: React.FC<TimelineProps> = ({
   }, [timeMarks, mistakeMarks])
 
   // 跳转到上一个/下一个标记
+  // 注意：mark.timestamp 是毫秒，currentTime 是秒
   const jumpToPrevMark = useCallback(() => {
     const prevMark = allMarks
-      .filter(m => m.timestamp < currentTime - 1)
+      .filter(m => m.timestamp / 1000 < currentTime - 1)
       .sort((a, b) => b.timestamp - a.timestamp)[0]
-    if (prevMark) onSeek(prevMark.timestamp)
+    if (prevMark) onSeek(prevMark.timestamp / 1000) // 转换为秒
   }, [allMarks, currentTime, onSeek])
 
   const jumpToNextMark = useCallback(() => {
     const nextMark = allMarks
-      .filter(m => m.timestamp > currentTime + 1)
+      .filter(m => m.timestamp / 1000 > currentTime + 1)
       .sort((a, b) => a.timestamp - b.timestamp)[0]
-    if (nextMark) onSeek(nextMark.timestamp)
+    if (nextMark) onSeek(nextMark.timestamp / 1000) // 转换为秒
   }, [allMarks, currentTime, onSeek])
 
   // 格式化时间
@@ -209,8 +210,10 @@ const Timeline: React.FC<TimelineProps> = ({
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0
 
   // 获取标记在时间轴上的位置
+  // 注意：timestamp 是毫秒，需要转换为秒
   const getMarkPosition = (timestamp: number) => {
-    return duration > 0 ? (timestamp / duration) * 100 : 0
+    const timestampInSeconds = timestamp / 1000
+    return duration > 0 ? (timestampInSeconds / duration) * 100 : 0
   }
 
   return (
@@ -242,64 +245,70 @@ const Timeline: React.FC<TimelineProps> = ({
 
         {/* 标记点 */}
         {allMarks.map((mark) => {
-          const markPos = getMarkPosition(mark.timestamp)
+          const markPosValue = getMarkPosition(mark.timestamp)
           const config = MARK_TYPE_CONFIG[mark.type]
           const isSelected = selectedMark?.id === mark.id
           const isMistake = 'markType' in mark && mark.markType === 'mistake'
-
+          const isLeft = markPosValue < 15
+          const isRight = markPosValue > 85
+          
           return (
             <div
               key={mark.id}
-              className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 rounded-full cursor-pointer transition-all z-10 group
+              className={`absolute rounded-full cursor-pointer transition-all z-10 group
                 ${isSelected ? 'w-5 h-5' : 'w-3 h-3 hover:scale-150'}
                 ${isMistake ? 'ring-2 ring-red-300' : ''}`}
-              style={{ left: `${markPos}%` }}
+              style={{ 
+                left: `${markPosValue}%`,
+                top: '50%',
+                transform: 'translate(-50%, -50%)'
+              }}
               onClick={(e) => {
                 e.stopPropagation()
                 setSelectedMark(mark as TimeMark)
-                onSeek(mark.timestamp)
+                onSeek(mark.timestamp / 1000)
               }}
               onMouseEnter={() => {
-                setShowTooltip(true)
-                setTooltipTime(mark.timestamp)
-                setTooltipPosition(markPos)
+                setTooltipTime(mark.timestamp / 1000)
+                setTooltipPosition(markPosValue)
               }}
-              onMouseLeave={() => setShowTooltip(false)}
             >
               <div className={`w-full h-full rounded-full ${
                 isMistake ? 'bg-orange-500 animate-pulse' : (config?.color || 'bg-gray-500')
               }`} />
 
               {/* 悬停/选中时的详细信息 */}
-              <div className={`
-                absolute bottom-full left-1/2 -translate-x-1/2 mb-2
-                ${isSelected || (showTooltip && !isDragging) ? 'opacity-100' : 'opacity-0'}
-                transition-opacity pointer-events-none z-20
-              `}>
-                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg p-2 min-w-[120px]">
-                  <div className="flex items-center gap-1 mb-1">
-                    <span className={`w-2 h-2 rounded-full ${config?.color || 'bg-gray-500'}`} />
-                    <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
-                      {formatTime(mark.timestamp)}
-                    </span>
-                    {isMistake && (
-                      <span className="text-xs text-orange-500 font-medium">错题</span>
-                    )}
-                  </div>
-                  {'content' in mark && mark.content && (
-                    <p className="text-[10px] text-slate-500 line-clamp-2">{mark.content}</p>
+              <div 
+                className="absolute bottom-full mb-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 whitespace-nowrap"
+                style={{
+                  left: isLeft ? '0%' : isRight ? 'auto' : '50%',
+                  right: isRight ? '0%' : 'auto',
+                  transform: isLeft || isRight ? 'none' : 'translateX(-50%)'
+                }}
+              >
+                <div className="bg-slate-800 text-white text-[10px] px-1.5 py-0.5 rounded">
+                  {/* 时间显示 */}
+                  {formatTime(mark.timestamp / 1000)}
+                  
+                  {/* PPT页码标记 */}
+                  {(mark as any).pptPage && (
+                    <span className="text-purple-300 ml-1">· PPT第{(mark as any).pptPage}页</span>
                   )}
-                  {'data' in mark && mark.data?.noteText && (
-                    <p className="text-[10px] text-slate-500 line-clamp-2">{mark.data.noteText}</p>
+                  
+                  {/* 图片标记 */}
+                  {(mark as any).imageUrl && (
+                    <span className="text-green-300 ml-1">· 📷图片</span>
                   )}
-                  {'title' in mark && mark.title && (
-                    <p className="text-[10px] text-slate-500 line-clamp-2">{mark.title}</p>
+                  
+                  {/* 内容 */}
+                  {mark.content && (
+                    <span className="text-slate-300 ml-1">· {mark.content.substring(0, 15)}{mark.content.length > 15 ? '...' : ''}</span>
                   )}
                 </div>
               </div>
             </div>
           )
-        })}
+        })}             
       </div>
 
       {/* 底部控制栏 */}

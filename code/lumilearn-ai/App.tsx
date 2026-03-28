@@ -36,6 +36,9 @@ const App: React.FC = () => {
   const [recordId, setRecordId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const authChecked = useRef(false);
+  
+  // 导航历史栈
+  const [navHistory, setNavHistory] = useState<Array<{view: AppView; data?: any}>>([]);
 
   // 自动登录检查 - 强制使用调试登录，确保 token 有效
   useEffect(() => {
@@ -65,7 +68,7 @@ const App: React.FC = () => {
     initAuth()
   }, [])
 
-  const navigate = async (view: AppView, data?: any) => {
+  const navigate = async (view: AppView, data?: any, options?: { skipHistory?: boolean }) => {
     // 检查 token 是否存在，如果不存在则重新登录
     const currentToken = localStorage.getItem('lumilearn_token')
     if (!currentToken) {
@@ -79,6 +82,11 @@ const App: React.FC = () => {
       } catch (error) {
         console.error('[navigate] 重新登录失败:', error)
       }
+    }
+
+    // 保存当前页面到历史栈（如果不跳过）
+    if (!options?.skipHistory) {
+      setNavHistory(prev => [...prev, { view: currentView, data: viewData }]);
     }
 
     setCurrentView(view);
@@ -107,6 +115,27 @@ const App: React.FC = () => {
 
   const handleCourseChange = (id: string) => {
     setCurrentCourseId(id);
+  };
+
+  // 返回上一页
+  const goBack = () => {
+    if (navHistory.length > 0) {
+      const prev = navHistory[navHistory.length - 1];
+      setNavHistory(prev => prev.slice(0, -1));
+      setCurrentView(prev.view);
+      setViewData(prev.data);
+      // 恢复 recordId 和 courseId
+      if (prev.data?.recordId) {
+        setRecordId(prev.data.recordId);
+      }
+      if (prev.data?.courseId) {
+        setCurrentCourseId(prev.data.courseId);
+      }
+    } else {
+      // 没有历史时返回首页
+      setCurrentView(AppView.DASHBOARD);
+      setViewData(null);
+    }
   };
 
   // 处理点击课程（学习或复习）
@@ -146,9 +175,16 @@ const App: React.FC = () => {
           />
         );
       case AppView.TIME_MACHINE:
-        return <TimeMachine onBack={() => navigate(AppView.DASHBOARD)} recordId={recordId} />;
+        return <TimeMachine onBack={goBack} recordId={viewData?.recordId || recordId} />;
       case AppView.RECORDER:
-        return <Recorder onBack={() => navigate(AppView.DASHBOARD)} initialCourseName={viewData?.courseName} />;
+        return <Recorder 
+          onBack={goBack}
+          onSaveSuccess={(id) => {
+            setRecordId(id);
+            navigate(AppView.TIME_MACHINE, { recordId: id });
+          }}
+          initialCourseName={viewData?.courseName} 
+        />;
       case AppView.AUTH:
         return <Auth onNavigate={navigate} />;
       case AppView.SETTINGS:
@@ -160,7 +196,7 @@ const App: React.FC = () => {
       case AppView.MISTAKE_DETAIL:
         return <MistakeDetail onNavigate={navigate} />;
       case AppView.EXAM_CALENDAR:
-        return <ExamCalendar onBack={() => navigate(AppView.DASHBOARD)} courseId={viewData?.courseId} />;
+        return <ExamCalendar onBack={goBack} courseId={viewData?.courseId} />;
       case AppView.WEAK_POINTS:
         return <WeakPoints onNavigate={navigate} currentCourseId={currentCourseId} />;
       default:

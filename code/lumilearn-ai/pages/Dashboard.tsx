@@ -1531,7 +1531,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                         <Trash2 size={14} />
                                     </button>
                                 </div>
-                                {record.notes && (
+                                {/* 只显示用户笔记，不显示PPT内容 */}
+                                {record.notes && !record.notes.startsWith('{') && (
                                     <p className="text-xs text-slate-500 line-clamp-2 mt-2">{record.notes}</p>
                                 )}
                                 <button
