@@ -21,10 +21,12 @@ export interface CreateStudyRecordBody {
   title: string
   date: string  // ISO8601 格式
   audioUrl?: string
+  documentUrl?: string  // PPT/PDF 文档 URL（原始文件）
+  pptContent?: any  // PPT 提取的文本内容
   notes?: string
   duration?: number
   status?: 'RECORDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
-  imageUrls?: string[]
+  imageUrls?: string[]  // 板书/笔记照片 URLs
 }
 
 // 更新学习记录请求体

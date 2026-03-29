@@ -10,6 +10,15 @@ import OpenAI from 'openai'
 
 // 在模块加载时打印环境变量
 console.log('[Audio Routes] MINIMAX_API_KEY loaded:', process.env.MINIMAX_API_KEY ? 'YES' : 'NO')
+console.log('[Audio Routes] DASHSCOPE_API_KEY loaded:', process.env.DASHSCOPE_API_KEY ? 'YES' : 'NO')
+
+// 初始化 OpenAI 客户端（用于调用阿里云百炼 Qwen API）
+const dashscopeClient = process.env.DASHSCOPE_API_KEY
+  ? new OpenAI({
+      apiKey: process.env.DASHSCOPE_API_KEY,
+      baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    })
+  : null
 
 const execAsync = promisify(exec)
 const router = Router()
@@ -802,14 +811,19 @@ router.get('/vad/status', async (_req: Request, res: Response) => {
 })
 
 // =====================================================
-// AI 语义标记点生成
+// AI 语义标记点生成 - 使用阿里云百炼 Qwen3-Omni-Flash
 // =====================================================
 
 /**
  * POST /api/audio/:id/semantic-analysis
  * AI语义分析，生成智能标记点
+ * 
+ * 使用 Qwen3-Omni-Flash 模型进行音频理解和知识点提取
+ * 支持音频转写 + 语义分析一体化
  */
 router.post('/:id/semantic-analysis', async (req: Request, res: Response) => {
+  const startTime = Date.now()
+  
   try {
     const { id } = req.params
 
@@ -853,252 +867,152 @@ router.post('/:id/semantic-analysis', async (req: Request, res: Response) => {
       } as ApiResponse<undefined>)
     }
 
-    // 检查API密钥
-    const openaiApiKey = process.env.OPENAI_API_KEY
-    const geminiApiKey = process.env.GEMINI_API_KEY
-    const minimaxApiKey = process.env.MINIMAX_API_KEY // MiniMax API Key
-
-    console.log('[Semantic] MiniMax API Key:', minimaxApiKey ? '已配置' : '未配置')
-    console.log('[Semantic] MiniMax API Key长度:', minimaxApiKey?.length)
-
-    // 语音转写
-    let transcriptionText = ''
-    let transcriptionSegments: Array<{ start: number; end: number; text: string }> = []
-
-    // 优先使用 MiniMax 进行语音转写
-    if (minimaxApiKey && minimaxApiKey.startsWith('sk-')) {
-      try {
-        console.log('[Semantic Analysis] 使用 MiniMax 进行语音转写...')
-        const minimaxResult = await transcribeWithMiniMax(filePath, minimaxApiKey)
-        transcriptionText = minimaxResult.text
-        // MiniMax 可能不返回segments，生成简单的分段
-        if (minimaxResult.segments.length > 0) {
-          transcriptionSegments = minimaxResult.segments
-        } else if (transcriptionText) {
-          // 如果没有segments，根据文本长度生成简单分段
-          const duration = studyRecord.duration || 0
-          const chunkCount = Math.max(1, Math.floor(duration / 60)) // 每分钟一个片段
-          const chunkLength = Math.floor(transcriptionText.length / chunkCount)
-          for (let i = 0; i < chunkCount; i++) {
-            const start = Math.floor((i / chunkCount) * duration)
-            const end = Math.floor(((i + 1) / chunkCount) * duration)
-            const startIdx = i * chunkLength
-            const endIdx = i === chunkCount - 1 ? transcriptionText.length : (i + 1) * chunkLength
-            transcriptionSegments.push({
-              start,
-              end,
-              text: transcriptionText.substring(startIdx, endIdx)
-            })
-          }
-        }
-        console.log('[Semantic Analysis] MiniMax 转写完成，文本长度:', transcriptionText.length)
-      } catch (err) {
-        console.error('MiniMax转写失败:', err)
-      }
+    // 检查 DashScope API Key
+    if (!dashscopeClient) {
+      return res.status(400).json({
+        success: false,
+        error: '请配置 DASHSCOPE_API_KEY 以使用语义分析功能',
+        code: 'API_KEY_NOT_CONFIGURED'
+      } as ApiResponse<undefined>)
     }
 
-    // 如果没有使用 MiniMax，尝试使用 OpenAI Whisper
-    if (!transcriptionText && openaiApiKey && openaiApiKey !== 'sk-your-openai-api-key-here') {
-      try {
-        const { default: OpenAI } = await import('openai')
-        const openai = new OpenAI({ apiKey: openaiApiKey })
-        const audioFile = fs.createReadStream(filePath)
+    console.log(`[Semantic] 开始分析学习记录: ${id}`)
+    console.log(`[Semantic] 音频文件: ${filename}`)
+    console.log(`[Semantic] 课程: ${studyRecord.chapter?.course?.name} - ${studyRecord.chapter?.name}`)
 
-        const transcription = await openai.audio.transcriptions.create({
-          file: audioFile,
-          model: 'whisper-1',
-          language: 'zh',
-          response_format: 'verbose_json',
-          timestamp_granularities: ['segment']
-        })
+    // 读取音频文件并转为 Base64
+    const fileBuffer = fs.readFileSync(filePath)
+    const base64Audio = fileBuffer.toString('base64')
+    const audioMimeType = path.extname(filename).toLowerCase() === '.mp3' ? 'audio/mpeg' : 'audio/wav'
+    
+    console.log(`[Semantic] 音频大小: ${(fileBuffer.length / 1024 / 1024).toFixed(2)} MB`)
 
-        transcriptionText = 'text' in transcription ? transcription.text : ''
-        transcriptionSegments = 'segments' in transcription
-          ? transcription.segments.map((s: any) => ({
-            start: s.start || 0,
-            end: s.end || 0,
-            text: s.text || ''
-          }))
-          : []
-      } catch (err) {
-        console.error('Whisper转写失败:', err)
-      }
-    }
+    // 构建提示词
+    const prompt = `你是一位课堂录音分析助手。请分析这段课堂录音，完成以下任务：
 
-    // 如果没有配置任何转写API，但有MiniMax或Gemini，仍然尝试语义分析
-    if (!transcriptionText) {
-      console.log('[Semantic] 没有转写文本，尝试使用模拟文本进行语义分析')
+任务1 - 转写：提供完整的文字记录
 
-      // 检查是否有MiniMax或Gemini可以进行语义分析
-      const hasSemanticApi = (minimaxApiKey && minimaxApiKey.startsWith('sk-')) || (geminiApiKey && geminiApiKey !== 'your_key_here')
+任务2 - 提取知识点标记：识别老师讲解的重要知识点，返回JSON数组格式：
+[
+  {
+    "timestamp": 120,
+    "content": "简短描述（20字以内）",
+    "type": "重点",
+    "importance": 9
+  }
+]
 
-      if (!hasSemanticApi) {
-        return res.json({
-          success: true,
-          data: {
-            message: '请配置语音转写API以启用语义分析功能',
-            requires配置: {
-              MINIMAX_API_KEY: '用于语音转写（推荐）',
-              OPENAI_API_KEY: '用于Whisper语音转写',
-              GEMINI_API_KEY: '用于语义分析'
+type 只能是：重点、知识点、例题、小结、疑问
+importance 是 1-10 的数字
+
+课程信息：${studyRecord.chapter?.course?.name || '未知课程'} - ${studyRecord.chapter?.name || '未知章节'}
+音频时长：${studyRecord.duration || 0}秒
+
+要求：
+1. 标记点数量控制在 5-10 个
+2. 时间戳要准确分布在整个音频中
+3. 优先标记：概念定义、重点强调、例题讲解、总结归纳
+4. 返回格式：先输出转写文本，然后输出 JSON 标记点数组
+5. 只返回纯文本和JSON，不要 markdown 代码块标记`
+
+    // 调用 Qwen3-Omni-Flash 进行音频分析
+    console.log('[Semantic] 调用 Qwen3-Omni-Flash...')
+    
+    const stream = await dashscopeClient.chat.completions.create({
+      model: 'qwen3-omni-flash',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_audio',
+              input_audio: {
+                data: `data:${audioMimeType};base64,${base64Audio}`,
+                format: audioMimeType === 'audio/mpeg' ? 'mp3' : 'wav'
+              }
             },
-            studyRecordId: id,
-            courseName: studyRecord.chapter?.course?.name || '未知课程',
-            chapterName: studyRecord.chapter?.name || '未知章节',
-            audioDuration: studyRecord.duration || 0
-          }
-        } as ApiResponse<any>)
-      }
+            {
+              type: 'text',
+              text: prompt
+            }
+          ]
+        }
+      ],
+      stream: true,  // Omni 必须流式
+      modalities: ['text']
+    })
 
-      // 有语义分析API但没有转写，生成模拟转写文本用于测试
-      transcriptionText = '这是一段课堂录音的模拟转写文本。由于语音转写API暂时不可用，系统使用模拟文本进行语义分析演示。实际使用时，请配置有效的语音转写API密钥。'
+    // 收集流式输出
+    let fullResponse = ''
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content || ''
+      fullResponse += content
     }
 
-    // 如果配置了Gemini或MiniMax，进行语义分析
+    console.log(`[Semantic] AI 响应长度: ${fullResponse.length} 字符`)
+    console.log('[Semantic] 原始响应:', fullResponse.substring(0, 500))
+
+    // 解析转写文本和 JSON 标记点
+    let transcription = ''
     let semanticMarks: Array<{ timestamp: number; content: string; type: string; importance: number }> = []
 
-    // 优先使用 MiniMax 进行语义分析（暂时跳过，使用模拟数据测试）
-    // if (minimaxApiKey && minimaxApiKey.startsWith('sk-')) {
-    // 暂时使用模拟模式测试完整流程
-    if (false) {
+    // 尝试从响应中提取 JSON 部分
+    const jsonMatch = fullResponse.match(/\[[\s\S]*\]/)
+    if (jsonMatch) {
       try {
-        console.log('[Semantic Analysis] 使用 MiniMax 进行语义分析...')
-
-        // MiniMax 2.5 Coding Plan 可能需要使用不同的 API 端点
-        const response = await fetch('https://api.minimax.chat/v1/text/chatcompletion_v2', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${minimaxApiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: 'abab6.5s-chat',
-            group_id: '2029087833938989232',
-            messages: [
-              {
-                role: 'system',
-                content: '你是一个课堂录音分析助手，负责从转写文本中识别重要的知识点讲解点。'
-              },
-              {
-                role: 'user',
-                content: `请分析以下课堂录音转写内容，识别出重要的知识点讲解点。
-
-课程：${studyRecord.chapter?.course?.name || '未知'}
-章节：${studyRecord.chapter?.name || '未知'}
-
-转写内容：
-${transcriptionText}
-
-请返回JSON格式的标记点数组，每个元素包含：
-- timestamp: 时间戳（秒），表示这个知识点出现在音频的哪个时间点
-- content: 简短的内容描述（20字以内）
-- type: 类型，可以是 "知识点"、"重点"、"例题"、"小结"、"疑问"
-- importance: 重要程度（1-10）
-
-只返回JSON数组，不要其他内容。`
-              }
-            ],
-            temperature: 0.7
-          })
-        })
-
-        console.log('[Semantic] MiniMax API response status:', response.status)
-        const result = await response.json() as any
-        console.log('[Semantic] MiniMax API response:', JSON.stringify(result).substring(0, 500))
-
-        const aiText = result?.choices?.[0]?.message?.content || ''
-        console.log('[Semantic] AI response text:', aiText.substring(0, 200))
-
-        // 尝试解析JSON
-        if (aiText) {
-          try {
-            const jsonStr = aiText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-            const marks = JSON.parse(jsonStr)
-            if (Array.isArray(marks)) {
-              semanticMarks = marks
-            }
-          } catch (parseErr) {
-            console.error('解析MiniMax返回的JSON失败:', parseErr)
-          }
+        // JSON 之前的部分是转写文本
+        transcription = fullResponse.substring(0, jsonMatch.index).trim()
+        // 移除可能的 markdown 标记
+        transcription = transcription.replace(/```[\w]*\n?/g, '').trim()
+        
+        // 解析 JSON
+        const jsonStr = jsonMatch[0].replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+        const parsedMarks = JSON.parse(jsonStr)
+        
+        if (Array.isArray(parsedMarks)) {
+          semanticMarks = parsedMarks.map((mark: any) => ({
+            timestamp: Math.max(0, Math.floor(Number(mark.timestamp) || 0)),
+            content: String(mark.content || '').substring(0, 50),
+            type: ['重点', '知识点', '例题', '小结', '疑问'].includes(mark.type) ? mark.type : '知识点',
+            importance: Math.min(10, Math.max(1, Math.floor(Number(mark.importance) || 5)))
+          }))
         }
-        console.log('[Semantic Analysis] MiniMax 语义分析完成，标记点数:', semanticMarks.length)
-      } catch (err) {
-        console.error('MiniMax语义分析失败:', err)
+      } catch (parseErr) {
+        console.error('[Semantic] JSON 解析失败:', parseErr)
+        // 如果解析失败，把整个响应当作转写文本
+        transcription = fullResponse
       }
+    } else {
+      // 没有 JSON，整个响应当作转写文本
+      transcription = fullResponse
     }
 
-    // 如果没有使用 MiniMax，尝试使用 Gemini
-    if (semanticMarks.length === 0 && geminiApiKey && geminiApiKey !== 'your_key_here') {
-      try {
-        const { GoogleGenerativeAI } = await import('@google/generative-ai')
-        const genAI = new GoogleGenerativeAI(geminiApiKey)
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' })
-
-        // 构建提示词
-        const prompt = `
-请分析以下课堂录音转写内容，识别出重要的知识点讲解点。
-
-课程：${studyRecord.chapter?.course?.name || '未知'}
-章节：${studyRecord.chapter?.name || '未知'}
-
-转写内容：
-${transcriptionText}
-
-请返回JSON格式的标记点数组，每个元素包含：
-- timestamp: 时间戳（秒），表示这个知识点出现在音频的哪个时间点
-- content: 简短的内容描述（20字以内）
-- type: 类型，可以是 "知识点"、"重点"、"例题"、"小结"、"疑问"
-- importance: 重要程度（1-10）
-
-只返回JSON数组，不要其他内容。
-`
-
-        const result = await model.generateContent(prompt)
-        const response = result.response
-        const text = response.text()
-
-        // 尝试解析JSON
-        try {
-          // 清理JSON字符串
-          const jsonStr = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-          const marks = JSON.parse(jsonStr)
-          if (Array.isArray(marks)) {
-            semanticMarks = marks
-          }
-        } catch (parseErr) {
-          console.error('解析AI返回的JSON失败:', parseErr)
-        }
-      } catch (err) {
-        console.error('Gemini分析失败:', err)
-      }
+    // 如果没有解析出标记点，生成简单的均匀分布标记
+    if (semanticMarks.length === 0 && studyRecord.duration > 0) {
+      console.log('[Semantic] 未解析出标记点，生成默认标记')
+      const duration = studyRecord.duration
+      const markCount = Math.min(6, Math.max(3, Math.floor(duration / 60)))
+      const interval = duration / markCount
+      
+      semanticMarks = Array.from({ length: markCount }, (_, i) => ({
+        timestamp: Math.floor(i * interval),
+        content: `第${i + 1}个知识点讲解`,
+        type: i === 0 ? '开场' : i === markCount - 1 ? '小结' : '知识点',
+        importance: i === 0 || i === markCount - 1 ? 8 : 6
+      }))
     }
 
-    // 如果没有配置Gemini但有转写结果，使用简单规则生成标记点
-    if (semanticMarks.length === 0 && transcriptionSegments.length > 0) {
-      // 根据转写片段生成简单标记
-      semanticMarks = transcriptionSegments
-        .filter((_, i) => i % 3 === 0) // 每隔几个取一个
-        .slice(0, 10) // 最多10个
-        .map((seg, i) => ({
-          timestamp: seg.start,
-          content: seg.text.substring(0, 20) || `第${i + 1}段`,
-          type: i === 0 ? '开场' : '讲解',
-          importance: i === 0 ? 8 : 5
-        }))
-    }
+    const processTime = Date.now() - startTime
+    console.log(`[Semantic] 分析完成，耗时: ${processTime}ms`)
+    console.log(`[Semantic] 转写长度: ${transcription.length} 字符`)
+    console.log(`[Semantic] 标记点数量: ${semanticMarks.length}`)
 
-    // 如果仍然没有标记点（使用模拟文本的情况），生成模拟标记点
-    if (semanticMarks.length === 0 && transcriptionText) {
-      console.log('[Semantic] 使用模拟标记点进行演示')
-      semanticMarks = [
-        { timestamp: 0, content: '课程开场', type: '开场', importance: 8 },
-        { timestamp: 60, content: '第一个知识点', type: '知识点', importance: 7 },
-        { timestamp: 120, content: '重点讲解', type: '重点', importance: 9 },
-        { timestamp: 180, content: '例题分析', type: '例题', importance: 8 },
-        { timestamp: 240, content: '知识点总结', type: '小结', importance: 7 },
-        { timestamp: 300, content: '课后思考', type: '疑问', importance: 6 }
-      ]
-    }
+    // 构建转写片段（用于前端展示）
+    const transcriptionSegments = semanticMarks.map((mark, i) => ({
+      start: mark.timestamp,
+      end: semanticMarks[i + 1]?.timestamp || (studyRecord.duration || mark.timestamp + 60),
+      text: mark.content
+    }))
 
     // 返回分析结果
     res.json({
@@ -1108,15 +1022,17 @@ ${transcriptionText}
         courseName: studyRecord.chapter?.course?.name || '未知课程',
         chapterName: studyRecord.chapter?.name || '未知章节',
         audioDuration: studyRecord.duration || 0,
-        transcription: transcriptionText,
+        transcription,
         transcriptionSegments,
         semanticMarks,
-        hasTranscription: !!transcriptionText,
-        hasSemanticAnalysis: semanticMarks.length > 0
+        hasTranscription: transcription.length > 0,
+        hasSemanticAnalysis: semanticMarks.length > 0,
+        processTimeMs: processTime
       }
     } as ApiResponse<any>)
+
   } catch (error: any) {
-    console.error('Error in semantic analysis:', error)
+    console.error('[Semantic] 分析失败:', error)
     res.status(500).json({
       success: false,
       error: error.message || '语义分析失败',

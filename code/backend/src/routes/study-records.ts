@@ -55,7 +55,7 @@ router.get('/', [
       }
     })
 
-    // 解析每个记录的 imageUrls
+    // 解析每个记录的 imageUrls，不返回 pptContent（详情接口才返回）
     const formattedRecords = studyRecords.map(record => {
       let imageUrls: string[] = []
       try {
@@ -63,8 +63,10 @@ router.get('/', [
       } catch (e) {
         imageUrls = []
       }
+      // 移除 pptContent，避免列表显示乱码
+      const { pptContent, ...rest } = record as any
       return {
-        ...record,
+        ...rest,
         imageUrls
       }
     })
@@ -208,19 +210,27 @@ router.get('/:id', [
       } as ApiResponse<undefined>)
     }
 
-    // 解析 imageUrls JSON 字符串为数组
+    // 解析 JSON 字符串为对象/数组
     let imageUrls: string[] = []
+    let pptContent: any = null
     try {
       imageUrls = JSON.parse(studyRecord.imageUrls || '[]')
     } catch (e) {
       imageUrls = []
+    }
+    try {
+      pptContent = JSON.parse(studyRecord.pptContent || '{}')
+      if (Object.keys(pptContent).length === 0) pptContent = null
+    } catch (e) {
+      pptContent = null
     }
 
     res.json({
       success: true,
       data: {
         ...studyRecord,
-        imageUrls
+        imageUrls,
+        pptContent
       }
     } as ApiResponse<StudyRecord>)
   } catch (error: any) {
@@ -244,10 +254,15 @@ router.post('/', [
   body('status').optional().isIn(['RECORDING', 'PROCESSING', 'COMPLETED', 'FAILED']),
   body('notes').optional().isString(),
   body('imageUrls').optional().isArray().withMessage('imageUrls must be an array'),
+  body('documentUrl').optional().isString(),
+  body('pptContent').optional().isObject().withMessage('pptContent must be an object'),
   validate
 ], async (req: Request, res: Response) => {
   try {
-    const { courseId, chapterId, title, date, audioUrl, duration, status = 'RECORDING', notes = '', imageUrls } = req.body
+    const { courseId, chapterId, title, date, audioUrl, duration, status = 'RECORDING', notes = '', imageUrls, documentUrl, pptContent } = req.body
+
+    console.log('[CreateStudyRecord] Received notes length:', (notes || '').length);
+    console.log('[CreateStudyRecord] Notes preview:', (notes || '').substring(0, 200));
 
     // 验证课程是否存在
     const course = await prisma.course.findUnique({
@@ -273,8 +288,9 @@ router.post('/', [
       } as ApiResponse<undefined>)
     }
 
-    // 将 imageUrls 数组转为 JSON 字符串存储
+    // 将数组转为 JSON 字符串存储
     const imageUrlsJson = imageUrls ? JSON.stringify(imageUrls) : '[]'
+    const pptContentJson = pptContent ? JSON.stringify(pptContent) : '{}'
 
     // 创建学习记录
     const studyRecord = await prisma.studyRecord.create({
@@ -283,7 +299,9 @@ router.post('/', [
         chapterId,
         title,
         date: new Date(date),
-        audioUrl: audioUrl || '',
+        audioUrl: audioUrl || null,
+        documentUrl: documentUrl || null,
+        pptContent: pptContentJson,
         duration,
         status,
         notes,

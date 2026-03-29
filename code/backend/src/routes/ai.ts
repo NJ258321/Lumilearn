@@ -4,6 +4,8 @@ import { validate } from '../middleware/validator.js'
 import type { ApiResponse } from '../types/index.js'
 import prisma from '../lib/prisma.js'
 import minimaxService from '../services/minimax.js'
+import geminiService from '../services/gemini.js'
+import { multimodalAnalyzer } from '../services/multimodalAnalyzer.js'
 
 const router = Router()
 
@@ -501,62 +503,157 @@ router.post('/ai/analyze-time-mark', [
       } as ApiResponse<undefined>)
     }
 
-    // 构建分析上下文
-    const context = `
-      学习记录：${timeMark.studyRecord.title}
-      标记类型：${timeMark.type}
-      标记内容：${timeMark.content || '无'}
-      文字稿内容：${timeMark.studyRecord.notes || '无'}
-    `
+    // 判断是否是板书图片标记
+    const hasImageUrl = !!(timeMark as any).imageUrl
+    let aiAnalysis: any = null
+    let imageAnalysis: any = null
 
-    // 调用 AI 进行分析
-    const analysisPrompt = `你是一位学习分析专家。请根据以下信息进行分析：
+    if (hasImageUrl) {
+      // ===== 板书图片分析：使用 Qwen3.5-Flash 视觉模型 =====
+      console.log(`[AI Analysis] Analyzing board image: ${(timeMark as any).imageUrl}`)
+      
+      try {
+        // 构建完整图片 URL
+        const imageUrl = (timeMark as any).imageUrl
+        const fullImageUrl = imageUrl.startsWith('http') 
+          ? imageUrl 
+          : `${process.env.API_BASE_URL || 'http://localhost:3000'}${imageUrl}`
+        
+        // 调用多模态分析器分析单张图片
+        const imageMark = await multimodalAnalyzer['analyzeSingleImage'](fullImageUrl, 0)
+        
+        if (imageMark && imageMark.content) {
+          imageAnalysis = imageMark
+          aiAnalysis = {
+            summary: imageMark.content,
+            keyPoints: [imageMark.content, `板书类型: ${imageMark.type || '板书'}`],
+            knowledgePoints: ['板书内容', imageMark.type || '板书'],
+            reviewSuggestions: {
+              firstReview: '1',
+              secondReview: '3',
+              consolidation: '7'
+            },
+            memoryTips: '建议结合图片内容进行复习，理解板书上的关键公式和概念'
+          }
+          console.log('[AI Analysis] Image analysis complete:', imageMark)
+        }
+      } catch (imageError) {
+        console.error('[AI Analysis] Image analysis failed:', imageError)
+      }
+    }
+
+    // 如果没有图片分析结果（非图片标记或图片分析失败），使用文本分析
+    if (!aiAnalysis) {
+      // 提取该时间标记附近的内容（前后30秒）
+      const markTimestamp = timeMark.timestamp // 毫秒
+      const transcript = timeMark.studyRecord.notes || ''
+      
+      // 尝试从转录文本中提取相关片段
+      let relevantSegment = transcript
+      
+      // 如果转录文本包含时间戳格式 [00:00] 或 00:00:00，尝试提取相关片段
+      if (transcript && transcript.length > 0) {
+        const lines = transcript.split('\n')
+        const relevantLines: string[] = []
+        
+        for (const line of lines) {
+          // 尝试匹配各种时间格式 [00:00], 00:00, 00:00:00 等
+          const timeMatch = line.match(/\[?(\d{1,2}):(\d{2})\]?:?\s*/)
+          if (timeMatch) {
+            const minutes = parseInt(timeMatch[1])
+            const seconds = parseInt(timeMatch[2])
+            const lineTimestamp = (minutes * 60 + seconds) * 1000 // 转为毫秒
+            
+            // 提取前后60秒内的内容
+            if (Math.abs(lineTimestamp - markTimestamp) <= 60000) {
+              relevantLines.push(line.replace(/^\[?\d{1,2}:\d{2}\]?:?\s*/, '').trim())
+            }
+          } else {
+            // 没有时间戳的行，如果前面有相关行，也包含进来
+            if (relevantLines.length > 0 && line.trim()) {
+              relevantLines.push(line.trim())
+            }
+          }
+        }
+        
+        if (relevantLines.length > 0) {
+          relevantSegment = relevantLines.join(' ')
+        }
+      }
+      
+      // 限制片段长度
+      if (relevantSegment.length > 800) {
+        relevantSegment = relevantSegment.substring(0, 800) + '...'
+      }
+
+      // 构建分析上下文
+      const context = `
+学习记录：${timeMark.studyRecord.title}
+标记类型：${timeMark.type}
+标记内容：${timeMark.content || '无'}
+时间点：${Math.floor(markTimestamp / 60000)}分${Math.floor((markTimestamp % 60000) / 1000)}秒
+
+该时间点附近的讲解内容：
+${relevantSegment || '无详细内容'}
+
+完整文字稿（供参考）：
+${transcript?.substring(0, 500) || '无'}${transcript?.length > 500 ? '...' : ''}
+      `.trim()
+
+      // 调用 AI 进行分析
+      const analysisPrompt = `你是一位学习分析专家。请根据以下课堂内容进行分析，重点关注标记时间点附近的讲解内容：
 
 ${context}
 
-请返回JSON格式的分析结果，包含以下字段：
+要求：
+1. 摘要必须基于"该时间点附近的讲解内容"，不能只是重复标记标题
+2. 提取该时间段内的核心概念、定义、公式或结论
+3. 关键要点要有实质内容，不能泛泛而谈
+4. 如果有数学公式或技术术语，请保留并解释
+
+请返回JSON格式的分析结果：
 {
-  "summary": "内容摘要（50字以内）",
-  "keyPoints": ["关键点1", "关键点2", "关键点3"],
-  "knowledgePoints": ["可能涉及的知识点1", "知识点2"],
+  "summary": "基于讲解内容的详细摘要（50-100字），说明具体讲了什么",
+  "keyPoints": ["具体要点1", "具体要点2", "具体要点3"],
+  "knowledgePoints": ["涉及的知识点1", "知识点2"],
   "reviewSuggestions": {
-    "firstReview": "首次复习建议（天数）",
-    "secondReview": "二次复习建议（天数）",
-    "consolidation": "巩固复习建议（天数）"
+    "firstReview": "1",
+    "secondReview": "3",
+    "consolidation": "7"
   },
-  "memoryTips": "记忆技巧建议"
+  "memoryTips": "针对该内容的记忆技巧"
 }
 
 请只返回JSON，不要其他内容。`
 
-    let aiAnalysis = null
-    try {
-      const aiResponse = await geminiService.chat(analysisPrompt, {
-        messages: [{ role: 'user', content: analysisPrompt }],
-        systemInstruction: '你是一位专业的学习分析师，擅长分析学习内容并给出复习建议。请用中文回答。'
-      })
+      try {
+        const aiResponse = await geminiService.chat(analysisPrompt, {
+          messages: [{ role: 'user', content: analysisPrompt }],
+          systemInstruction: '你是一位专业的学习分析师，擅长分析学习内容并给出复习建议。请用中文回答。'
+        })
 
-      // 尝试解析AI返回的JSON
-      const jsonMatch = aiResponse.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        aiAnalysis = JSON.parse(jsonMatch[0])
+        // 尝试解析AI返回的JSON
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          aiAnalysis = JSON.parse(jsonMatch[0])
+        }
+      } catch (aiError) {
+        console.error('AI分析失败:', aiError)
       }
-    } catch (aiError) {
-      console.error('AI分析失败:', aiError)
-    }
 
-    // 如果AI分析失败，使用默认数据
-    if (!aiAnalysis) {
-      aiAnalysis = {
-        summary: timeMark.content?.substring(0, 50) || '暂无内容摘要',
-        keyPoints: [timeMark.content || '暂无关键点'],
-        knowledgePoints: timeMark.knowledgePoint ? [timeMark.knowledgePoint.name] : ['待关联'],
-        reviewSuggestions: {
-          firstReview: '1',
-          secondReview: '3',
-          consolidation: '7'
-        },
-        memoryTips: '建议通过多次复习来巩固记忆'
+      // 如果AI分析失败，使用默认数据
+      if (!aiAnalysis) {
+        aiAnalysis = {
+          summary: timeMark.content?.substring(0, 50) || '暂无内容摘要',
+          keyPoints: [timeMark.content || '暂无关键点'],
+          knowledgePoints: timeMark.knowledgePoint ? [timeMark.knowledgePoint.name] : ['待关联'],
+          reviewSuggestions: {
+            firstReview: '1',
+            secondReview: '3',
+            consolidation: '7'
+          },
+          memoryTips: '建议通过多次复习来巩固记忆'
+        }
       }
     }
 

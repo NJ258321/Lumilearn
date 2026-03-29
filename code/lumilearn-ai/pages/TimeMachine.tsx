@@ -6,7 +6,7 @@ import TimeMarker from '../src/components/TimeMarker';
 import Timeline from '../src/components/Timeline';
 import AIPanel from '../src/components/AIPanel';
 import { NotesPanel } from '../src/components/Notes';
-import { getTimeMarkList, getRelatedMarks } from '../src/api/timeMarks';
+import { getTimeMarkList, getRelatedMarks, batchCreateTimeMarks } from '../src/api/timeMarks';
 import { getStudyRecordById } from '../src/api/studyRecords';
 import { getKnowledgePointList } from '../src/api/knowledgePoints';
 import { API_CONFIG } from '../src/api/request';
@@ -54,6 +54,9 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
   const [recordLoading, setRecordLoading] = useState(true);
   const [recordError, setRecordError] = useState<string | null>(null);
 
+  // 板书弹窗状态
+  const [showBoardImages, setShowBoardImages] = useState(false);
+
   // 知识点数据（用于AI面板）
   const [knowledgePoints, setKnowledgePoints] = useState<KnowledgePoint[]>([]);
 
@@ -74,6 +77,9 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
   const [timeMarks, setTimeMarks] = useState<TimeMark[]>([]);
   const [marksLoading, setMarksLoading] = useState(false);
   const studyRecordId = recordId;
+  
+  // 防止重复创建板书标记的标志
+  const creatingBoardMarksRef = useRef(false);
 
   // 如果没有 recordId，显示空状态
   if (!studyRecordId) {
@@ -103,8 +109,15 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
   // 使用学习记录的时长，如果没有则使用默认值
   const duration = studyRecord?.duration || 50;
 
-  // 获取用户上传的真实图片
+  // 获取 PDF URL（课件）
+  const pdfUrl = studyRecord?.documentUrl;
+  const hasPDF = !!pdfUrl && pdfUrl.endsWith('.pdf');
+
+  // 获取用户上传的板书图片
   const userImages = studyRecord?.imageUrls || [];
+  const hasBoardImages = userImages.length > 0;
+
+  // 旧的图片幻灯片（时间轴联动，暂时保留兼容）
   const slides = getSlides(userImages);
   const hasImages = slides.length > 0;
 
@@ -160,6 +173,21 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
     setTouchDeltaX(0)
   }
 
+  // 获取时间标记列表
+  const fetchTimeMarks = useCallback(async () => {
+    setMarksLoading(true);
+    try {
+      const response = await getTimeMarkList(studyRecordId);
+      if (response.success && response.data) {
+        setTimeMarks(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch time marks:', err);
+    } finally {
+      setMarksLoading(false);
+    }
+  }, [studyRecordId]);
+
   // 获取学习记录详情
   const fetchStudyRecord = useCallback(async () => {
     setRecordLoading(true);
@@ -167,7 +195,48 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
     try {
       const response = await getStudyRecordById(studyRecordId);
       if (response.success && response.data) {
-        setStudyRecord(response.data);
+        const record = response.data;
+        setStudyRecord(record);
+        
+        // 检查是否有板书图片，为每张图片创建板书标记
+        const imageUrls = (record as any).imageUrls || [];
+        if (imageUrls.length > 0 && !creatingBoardMarksRef.current) {
+          // 立即设置标志，防止并发重复创建（必须在任何 await 之前）
+          creatingBoardMarksRef.current = true;
+          
+          try {
+            // 获取现有标记，检查是否已有板书标记
+            const marksResponse = await getTimeMarkList(studyRecordId);
+            if (marksResponse.success && marksResponse.data) {
+              const existingBoardMarks = marksResponse.data.filter((m: TimeMark) => m.type === 'BOARD_CHANGE');
+              // 如果还没有板书标记，为每张图片创建一个
+              if (existingBoardMarks.length === 0) {
+                const boardMarks = imageUrls.map((url: string, index: number) => ({
+                  timestamp: index * 60, // 每张图片间隔1分钟
+                  type: 'BOARD_CHANGE' as const,
+                  content: `课堂板书图片 ${index + 1}`,
+                  imageUrl: url
+                }));
+                
+                console.log(`准备创建 ${boardMarks.length} 个板书标记:`, boardMarks);
+                
+                const createResponse = await batchCreateTimeMarks(studyRecordId, boardMarks);
+                if (createResponse.success) {
+                  console.log(`成功创建了 ${boardMarks.length} 个板书标记`);
+                  // 重新获取时间标记列表
+                  await fetchTimeMarks();
+                } else {
+                  console.error('创建板书标记失败:', createResponse.error);
+                }
+              } else {
+                console.log(`已有 ${existingBoardMarks.length} 个板书标记，跳过创建`);
+              }
+            }
+          } catch (err) {
+            console.error('创建板书标记过程出错:', err);
+          }
+        }
+        
         // 如果有音频URL，创建音频元素
         const audioUrl = response.data.audioUrl;
         console.log('原始音频URL:', audioUrl);
@@ -216,7 +285,7 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
     } finally {
       setRecordLoading(false);
     }
-  }, [studyRecordId]);
+  }, [studyRecordId, fetchTimeMarks]);
 
   // 获取知识点列表（用于AI面板）
   const fetchKnowledgePoints = useCallback(async () => {
@@ -229,21 +298,6 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
       console.error('获取知识点失败', err);
     }
   }, []);
-
-  // 获取时间标记列表
-  const fetchTimeMarks = useCallback(async () => {
-    setMarksLoading(true);
-    try {
-      const response = await getTimeMarkList(studyRecordId);
-      if (response.success && response.data) {
-        setTimeMarks(response.data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch time marks:', err);
-    } finally {
-      setMarksLoading(false);
-    }
-  }, [studyRecordId]);
 
   // 获取相关时间标记（根据当前播放时间）
   const fetchRelatedMarks = useCallback(async () => {
@@ -321,9 +375,11 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
 
   // 监听音频播放时间更新
   useEffect(() => {
-    if (!audioRef.current || !hasAudio) return;
-
+    // 依赖 studyRecord，当学习记录加载/变化时重新设置
     const audio = audioRef.current;
+    if (!audio) return;
+
+    console.log('[Audio] Setting up timeupdate listener, audio exists:', !!audio);
 
     const handleTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
@@ -340,10 +396,11 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
     audio.addEventListener('ended', handleEnded);
 
     return () => {
+      console.log('[Audio] Removing timeupdate listener');
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, [hasAudio]);
+  }, [studyRecord]); // 依赖 studyRecord，当音频加载后重新设置
 
   // 播放速率变化时更新音频（带平滑过渡）
   useEffect(() => {
@@ -496,12 +553,36 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
             {/* PPT展示区 - 16:9比例 */}
             <div
               className="w-full aspect-video bg-white rounded-2xl shadow-lg border border-slate-200/60 overflow-hidden relative touch-pan-y mt-3"
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
             >
                 <div className="w-full h-full relative">
-                    {hasImages ? (
+                    {hasPDF ? (
+                        // PDF 课件展示
+                        <div className="w-full h-full flex flex-col bg-slate-100">
+                            {/* PDF 工具栏 */}
+                            <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-200">
+                                <span className="text-xs font-medium text-slate-600">课件 PDF</span>
+                                <div className="flex items-center gap-2">
+                                    <a
+                                        href={getFullImageUrl(pdfUrl)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-blue-600 hover:underline"
+                                    >
+                                        全屏查看
+                                    </a>
+                                </div>
+                            </div>
+                            {/* PDF 显示区 */}
+                            <div className="flex-1 relative">
+                                <iframe
+                                    src={getFullImageUrl(pdfUrl)}
+                                    className="w-full h-full border-0"
+                                    title="PDF Preview"
+                                />
+                            </div>
+                        </div>
+                    ) : hasImages ? (
+                        // 回退：显示板书图片（旧的兼容模式）
                         <div className="flex w-full h-full transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
                             style={{ transform: `translateX(calc(-${activeSlideIndex * 100}% + ${touchDeltaX}px))` }}>
                             {slides.map((slide, index) => (
@@ -514,20 +595,25 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
                         <div className="w-full h-full flex items-center justify-center bg-slate-50">
                             <div className="text-center">
                                 <Camera size={48} className="text-slate-300 mx-auto mb-2" />
-                                <p className="text-slate-400 font-medium">暂无图片</p>
+                                <p className="text-slate-400 font-medium">暂无课件内容</p>
                             </div>
                         </div>
                     )}
                 </div>
-                {hasImages && (
-                    <>
-                        {/* 右上角图片计数器 */}
-                        <div className="absolute top-3 right-3 z-20 bg-black/50 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-mono text-white">
-                            {activeSlideIndex + 1}/{slides.length}
-                        </div>
-                    </>
-                )}
             </div>
+
+            {/* 工具栏：板书查看按钮 */}
+            {(hasBoardImages || hasImages) && (
+                <div className="flex justify-end mt-2 px-1">
+                    <button
+                        onClick={() => setShowBoardImages(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:text-blue-600 hover:border-blue-300 transition-colors shadow-sm"
+                    >
+                        <Camera size={14} />
+                        查看板书 ({userImages.length}张)
+                    </button>
+                </div>
+            )}
         </div>
 
         {/* --- B. 中部听觉控制区 (可折叠) --- */}
@@ -773,6 +859,41 @@ const TimeMachine: React.FC<TimeMachineProps> = ({ onBack, recordId }) => {
                 </div>
             </div>
         </div>
+
+        {/* 板书图片弹窗 */}
+        {showBoardImages && (
+            <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+                    {/* 弹窗头部 */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+                        <h3 className="text-base font-bold text-slate-800">课堂板书 ({userImages.length}张)</h3>
+                        <button
+                            onClick={() => setShowBoardImages(false)}
+                            className="p-1.5 hover:bg-slate-100 rounded-full transition-colors"
+                        >
+                            <X size={20} className="text-slate-500" />
+                        </button>
+                    </div>
+                    {/* 图片列表 */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        {userImages.map((url: string, idx: number) => (
+                            <div key={idx} className="bg-slate-50 rounded-xl overflow-hidden">
+                                <div className="px-3 py-2 bg-slate-100 border-b border-slate-200">
+                                    <span className="text-xs font-medium text-slate-600">第 {idx + 1} 张</span>
+                                </div>
+                                <div className="p-3">
+                                    <img
+                                        src={getFullImageUrl(url)}
+                                        alt={`板书 ${idx + 1}`}
+                                        className="w-full rounded-lg"
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        )}
     </div>
   );
 };

@@ -28,8 +28,8 @@ const Drill: React.FC<DrillProps> = ({ onNavigate, courseId }) => {
           setMastery(masteryRes.data);
         }
 
-        // 获取错题数据
-        const mistakesRes = await getMistakes();
+        // 获取错题数据 - 只获取当前课程的错题
+        const mistakesRes = await getMistakes(undefined, courseId);
         if (mistakesRes.success && mistakesRes.data) {
           setMistakes(mistakesRes.data);
         }

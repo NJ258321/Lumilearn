@@ -43,6 +43,7 @@ const NotesPanel: React.FC<NotesPanelProps> = ({
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [selectedMarkForAnalysis, setSelectedMarkForAnalysis] = useState<TimeMark | null>(null);
   const [showSearch, setShowSearch] = useState(false);
+  const [selectedMarkId, setSelectedMarkId] = useState<string | null>(null); // 用户点击选中的标记
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 筛选后的笔记列表
@@ -69,7 +70,15 @@ const NotesPanel: React.FC<NotesPanelProps> = ({
   }, [timeMarks, activeFilter, searchKeyword]);
 
   // 获取当前激活的笔记索引
+  // 如果用户手动选中了某个标记，则显示该标记为激活状态
+  // 否则根据当前播放时间自动计算
   const getActiveIndex = useMemo(() => {
+    // 如果用户手动选中了某个标记，优先显示选中的
+    if (selectedMarkId) {
+      const selectedIndex = filteredMarks.findIndex(m => m.id === selectedMarkId);
+      if (selectedIndex !== -1) return selectedIndex;
+    }
+    // 否则根据播放时间自动计算
     if (filteredMarks.length === 0) return -1;
     for (let i = filteredMarks.length - 1; i >= 0; i--) {
       if (currentTime >= filteredMarks[i].timestamp) {
@@ -77,7 +86,7 @@ const NotesPanel: React.FC<NotesPanelProps> = ({
       }
     }
     return -1;
-  }, [filteredMarks, currentTime]);
+  }, [filteredMarks, currentTime, selectedMarkId]);
 
   // 统计各类型数量
   const counts = useMemo(() => {
@@ -241,10 +250,14 @@ const NotesPanel: React.FC<NotesPanelProps> = ({
               isActive={index === getActiveIndex}
               isPast={currentTime > mark.timestamp}
               index={index}
-              onSeek={onSeek}
+              onSeek={(time) => {
+                setSelectedMarkId(mark.id || null); // 点击时选中该标记
+                onSeek(time);
+              }}
               onUpdate={handleMarkUpdate}
               onDelete={handleMarkDelete}
               onAnalyze={(m) => setSelectedMarkForAnalysis(m)}
+              onClick={() => setSelectedMarkId(mark.id || null)} // 点击卡片选中
             />
           ))
         )}

@@ -164,14 +164,33 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     }
   }, []);
 
-  // 课程类型映射表
+  // 课程类型映射表 - 与后端数据保持一致
   const courseTypeMap: Record<string, 'PROFESSIONAL' | 'CROSS_MAJOR' | 'ELECTIVE'> = {
-    '高等数学': 'PROFESSIONAL',
+    // 大二下学期（当前学期）
+    '遥感原理与应用': 'PROFESSIONAL',
+    '数据库原理': 'PROFESSIONAL',
+    '摄影测量学': 'PROFESSIONAL',
+    '概率论与数理统计': 'PROFESSIONAL',
+    // 大二上学期
+    '地理信息系统原理': 'PROFESSIONAL',
+    '计算机组成原理': 'PROFESSIONAL',
+    '大学英语（二）': 'ELECTIVE',
+    '大学物理': 'PROFESSIONAL',
+    // 大一下学期
+    '高等数学（下）': 'PROFESSIONAL',
     '线性代数': 'PROFESSIONAL',
+    '数据结构': 'PROFESSIONAL',
+    '面向对象程序设计': 'PROFESSIONAL',
+    // 大一上学期
+    '高等数学（上）': 'PROFESSIONAL',
+    'C语言程序设计': 'PROFESSIONAL',
+    '大学英语（一）': 'ELECTIVE',
+    '中国近现代史纲要': 'CROSS_MAJOR',
+    '思想道德与法治': 'CROSS_MAJOR',
+    // 兼容旧名称
+    '高等数学': 'PROFESSIONAL',
     '程序设计': 'PROFESSIONAL',
     '普通测量学': 'PROFESSIONAL',
-    '思想道德与法治': 'ELECTIVE',
-    '中国近现代史纲要': 'ELECTIVE',
   };
 
   const getCourseTypeInfo = (courseName: string) => {
@@ -230,13 +249,35 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           });
         }
         const group = courseMap.get(courseName)!;
+        
+        // 映射任务类型
+        const getTaskType = (itemType: string): string => {
+          switch (itemType) {
+            case 'weak_point':
+            case 'WEAK_POINT':
+              return 'mistake';  // 薄弱点复习
+            case 'new':
+              return 'new';  // 新知识学习
+            case 'review':
+              return 'practice';  // 题目练习/知识回顾
+            case 'consolidation':
+              return 'practice';  // 巩固练习
+            case 'CHAPTER_REVIEW':
+              return 'review';  // 章节复习
+            case 'MOCK_EXAM':
+              return 'paper';  // 全真模拟
+            default:
+              return 'practice';  // 默认题目练习
+          }
+        };
+        
         group.tasks.push({
           id: item.id,
           courseName,
           title: item.knowledgePointName,
           duration: `${item.estimatedTime}min`,
           status: 'pending',
-          type: item.type === 'new' ? 'review' : 'review',
+          type: getTaskType(item.type),
           tag: ''
         });
       });
@@ -581,31 +622,47 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         console.log('[handleOptimize] 排序后的分配:', sortedAllocation.map(a => ({ course: a.courseName, priority: a.priority })));
 
         // 时间段分配：每个时间段可安排多个课程
-        // 上午: 09:00-12:00, 下午: 14:00-18:00, 晚上: 19:00-21:00
-        // 同一时间段内的课程用不同时间点区分
+        // 上午: 09:00-12:00 (3小时), 下午: 14:00-18:00 (4小时), 晚上: 19:00-21:00 (2小时)
+        // 支持更多课程，每30分钟一个时间段
         const getTimeAndPeriod = (idx: number) => {
-          if (idx < 2) {
+          // 循环使用时间段，每6个课程循环一次
+          const cycleIdx = idx % 6;
+          if (cycleIdx < 2) {
             // 上午：9:00, 10:30
-            return { time: idx === 0 ? '09:00' : '10:30', period: '上午学习' };
-          } else if (idx < 4) {
+            return { time: cycleIdx === 0 ? '09:00' : '10:30', period: '上午学习' };
+          } else if (cycleIdx < 4) {
             // 下午：14:00, 16:00
-            const afternoonIdx = idx - 2;
+            const afternoonIdx = cycleIdx - 2;
             return { time: afternoonIdx === 0 ? '14:00' : '16:00', period: '下午学习' };
           } else {
             // 晚上：19:00, 20:00
-            const eveningIdx = idx - 4;
+            const eveningIdx = cycleIdx - 4;
             return { time: eveningIdx === 0 ? '19:00' : '20:00', period: '晚上学习' };
           }
         };
 
-        // 课程类型映射表
+        // 课程类型映射表 - 与后端数据保持一致
         const courseTypeMap: Record<string, 'PROFESSIONAL' | 'CROSS_MAJOR' | 'ELECTIVE'> = {
-          '高等数学': 'PROFESSIONAL',      // 专业必修
-          '线性代数': 'PROFESSIONAL',      // 专业必修
-          '程序设计': 'PROFESSIONAL',      // 专业必修
-          '普通测量学': 'PROFESSIONAL',    // 专业必修
-          '思想道德与法治': 'ELECTIVE',     // 公共课
-          '中国近现代史纲要': 'ELECTIVE',   // 公共课
+          '遥感原理与应用': 'PROFESSIONAL',
+          '数据库原理': 'PROFESSIONAL',
+          '摄影测量学': 'PROFESSIONAL',
+          '概率论与数理统计': 'PROFESSIONAL',
+          '地理信息系统原理': 'PROFESSIONAL',
+          '计算机组成原理': 'PROFESSIONAL',
+          '大学英语（二）': 'ELECTIVE',
+          '大学物理': 'PROFESSIONAL',
+          '高等数学（下）': 'PROFESSIONAL',
+          '线性代数': 'PROFESSIONAL',
+          '数据结构': 'PROFESSIONAL',
+          '面向对象程序设计': 'PROFESSIONAL',
+          '高等数学（上）': 'PROFESSIONAL',
+          'C语言程序设计': 'PROFESSIONAL',
+          '大学英语（一）': 'ELECTIVE',
+          '中国近现代史纲要': 'CROSS_MAJOR',
+          '思想道德与法治': 'CROSS_MAJOR',
+          '高等数学': 'PROFESSIONAL',
+          '程序设计': 'PROFESSIONAL',
+          '普通测量学': 'PROFESSIONAL',
         };
 
         // 课程类型标签和颜色
@@ -628,43 +685,95 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           };
         };
 
-        const newGroups = sortedAllocation.map((allocation, idx) => {
-          const courseName = allocation.courseName;
-          const tasks = courseTasks.get(courseName) || [];
+        // 过滤并映射课程，只保留学习中(STUDYING)和复习中(REVIEWING)的课程
+        const newGroups = sortedAllocation
+          .map((allocation, idx) => {
+            const courseName = allocation.courseName;
+            const tasks = courseTasks.get(courseName) || [];
 
-          // 获取课程类型信息
-          const { typeLabel, typeColor, courseType } = getCourseTypeInfo(courseName);
+            // 获取课程类型信息
+            const { typeLabel, typeColor, courseType } = getCourseTypeInfo(courseName);
 
-          // 判断学习状态：是否有新知识
-          const hasNewKnowledge = tasks.some(t => t.type === 'new');
-          const studyStatus = hasNewKnowledge ? 'learning' : 'reviewing';
+            // 从 courses 状态获取课程真实状态
+            const courseInfo = courses.find(c => c.name === courseName || c.id === allocation.courseId);
+            const courseStatus = courseInfo?.status || 'STUDYING';
+            
+            // 映射课程状态到学习状态
+            let studyStatus: 'learning' | 'reviewing' | 'completed';
+            if (courseStatus === 'STUDYING') {
+              studyStatus = 'learning';
+            } else if (courseStatus === 'REVIEWING') {
+              studyStatus = 'reviewing';
+            } else {
+              studyStatus = 'completed';
+            }
 
-          // 将知识点任务转换为TaskGroup格式
-          const taskItems = tasks.slice(0, 10).map((item, i) => ({
-            id: item.id || `${courseName}-${i}`,
-            courseName: courseName,
-            title: item.knowledgePointName,
-            duration: `${item.estimatedTime}min`,
-            status: 'pending' as const,
-            type: 'review' as const,
-            tag: item.type === 'new' ? '新知识' : '复习'
-          }));
+            // 映射任务类型
+            const getTaskType = (itemType: string): string => {
+              switch (itemType) {
+                case 'weak_point':
+                case 'WEAK_POINT':
+                  return 'mistake';  // 薄弱点复习
+                case 'new':
+                  return 'new';  // 新知识学习
+                case 'review':
+                  return 'practice';  // 题目练习
+                case 'consolidation':
+                  return 'practice';  // 巩固练习
+                case 'CHAPTER_REVIEW':
+                  return 'review';  // 章节复习
+                case 'MOCK_EXAM':
+                  return 'paper';  // 全真模拟
+                default:
+                  return 'practice';  // 默认题目练习
+              }
+            };
+            
+            // 将知识点任务转换为TaskGroup格式
+            // 如果没有任务，生成一个默认任务
+            let taskItems;
+            if (tasks.length === 0) {
+              // 根据课程状态生成默认任务
+              const defaultTaskType = studyStatus === 'learning' ? 'new' : 'practice';
+              const defaultTitle = studyStatus === 'learning' ? '新知识学习' : '薄弱点复习';
+              taskItems = [{
+                id: `${courseName}-default`,
+                courseName: courseName,
+                title: defaultTitle,
+                duration: '25min',
+                status: 'pending' as const,
+                type: defaultTaskType,
+                tag: studyStatus === 'learning' ? '新知识' : '薄弱点'
+              }];
+            } else {
+              taskItems = tasks.slice(0, 10).map((item, i) => ({
+                id: item.id || `${courseName}-${i}`,
+                courseName: courseName,
+                title: item.knowledgePointName,
+                duration: `${item.estimatedTime}min`,
+                status: 'pending' as const,
+                type: getTaskType(item.type),
+                tag: item.type === 'new' ? '新知识' : (item.type === 'weak_point' || item.type === 'WEAK_POINT' ? '薄弱点' : '练习')
+              }));
+            }
 
-          const { time, period } = getTimeAndPeriod(idx);
+            const { time, period } = getTimeAndPeriod(idx);
 
-          return {
-            courseId: allocation.courseId,
-            courseName: courseName,
-            time,
-            period,
-            tag: typeLabel,  // 显示课程类型
-            tagColor: typeColor,
-            courseType,
-            studyStatus,
-            progress: `${allocation.allocatedHours}h/天 (${taskItems.length}项)`,
-            tasks: taskItems
-          };
-        });
+            return {
+              courseId: allocation.courseId,
+              courseName: courseName,
+              time,
+              period,
+              tag: typeLabel,  // 显示课程类型
+              tagColor: typeColor,
+              courseType,
+              studyStatus,
+              progress: `${allocation.allocatedHours}h/天 (${taskItems.length}项)`,
+              tasks: taskItems
+            };
+          })
+          .filter(group => group.studyStatus !== 'completed'); // 过滤掉已结课的课程
+        
         // 调试：打印新任务组的时间安排
         console.log('[handleOptimize] 新任务组时间安排:', newGroups.map(g => ({
           course: g.courseName,
@@ -696,7 +805,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     }
   };
 
-  const handleTaskClick = (task: Task) => {
+  const handleTaskClick = (task: Task, courseId?: string) => {
       if (task.type === 'review' || task.type === 'paper') {
           if (task.courseName.includes('摄影测量')) {
              onNavigate(AppView.COURSE_DETAIL_REVIEW);
@@ -704,8 +813,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
              onNavigate(AppView.TIME_MACHINE);
           }
       } else if (task.type === 'quiz' || task.type === 'mistake' || task.type === 'practice') {
-          // 练习类型(practice/quiz/mistake)跳转到练习页面
-          onNavigate(AppView.DRILL);
+          // 练习类型(practice/quiz/mistake)跳转到练习页面，传递课程ID
+          onNavigate(AppView.DRILL, { courseId });
       }
   };
 
@@ -1354,7 +1463,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                 return (
                                     <div
                                         key={task.id}
-                                        onClick={() => handleTaskClick(task)}
+                                        onClick={() => handleTaskClick(task, group.courseId)}
                                         className={`relative rounded-xl p-3.5 border transition-all active:scale-[0.98] ${cardStyle}`}
                                     >
                                         <div className="flex justify-between items-start mb-1.5">
@@ -1531,7 +1640,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                         <Trash2 size={14} />
                                     </button>
                                 </div>
-                                {record.notes && (
+                                {/* 只显示用户笔记，不显示PPT内容 */}
+                                {record.notes && !record.notes.startsWith('{') && (
                                     <p className="text-xs text-slate-500 line-clamp-2 mt-2">{record.notes}</p>
                                 )}
                                 <button

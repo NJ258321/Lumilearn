@@ -55,11 +55,31 @@ const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({
   // 当面板打开时自动获取分析
   useEffect(() => {
     if (isOpen && mark?.id) {
-      fetchAnalysis();
+      // 首先尝试从标记的 aiAnalysis 字段读取
+      if ((mark as any).aiAnalysis) {
+        try {
+          const parsed = JSON.parse((mark as any).aiAnalysis);
+          setAnalysis({
+            timeMarkId: mark.id,
+            type: mark.type,
+            content: mark.content || '',
+            analysis: parsed,
+            relatedKnowledgePoints: [],
+            currentKnowledgePoint: null
+          });
+          setLoading(false);
+        } catch (e) {
+          // 解析失败，调用API
+          fetchAnalysis();
+        }
+      } else {
+        // 没有预存的AI分析，调用API
+        fetchAnalysis();
+      }
     }
   }, [isOpen, mark?.id]);
 
-  // 获取AI分析
+  // 获取AI分析（从API）
   const fetchAnalysis = async () => {
     if (!mark?.id) return;
 
@@ -160,6 +180,30 @@ const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({
           ) : analysis ? (
             /* 分析结果 */
             <div className="space-y-4">
+              {/* 板书图片显示（如果是板书类型且有图片） */}
+              {(mark as any).imageUrl && (
+                <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-50">
+                  <div className="px-4 py-2 bg-slate-100 border-b border-slate-200 flex items-center gap-2">
+                    <Video size={14} className="text-purple-600" />
+                    <span className="text-xs font-bold text-slate-700">板书图片</span>
+                  </div>
+                  <div className="p-3">
+                    <img 
+                      src={(mark as any).imageUrl.startsWith('http') 
+                        ? (mark as any).imageUrl 
+                        : `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'}${(mark as any).imageUrl}`
+                      }
+                      alt="板书图片"
+                      className="w-full rounded-xl object-contain max-h-64"
+                      onError={(e) => {
+                        console.error('板书图片加载失败:', (mark as any).imageUrl);
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              
               {/* 标记信息 */}
               <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl">
                 <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-bold ${config.color} bg-white`}>
@@ -167,7 +211,10 @@ const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({
                   {config.label}
                 </div>
                 <span className="text-xs text-slate-500 font-mono">
-                  {Math.floor(mark.timestamp / 60).toString().padStart(2, '0')}:{(mark.timestamp % 60).toString().padStart(2, '0')}
+                  {(() => {
+                    const seconds = Math.floor(mark.timestamp / 1000);
+                    return `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
+                  })()}
                 </span>
                 <span className="text-sm text-slate-700 truncate flex-1">
                   {mark.content || '暂无内容'}
@@ -321,7 +368,7 @@ const AIAnalysisPanel: React.FC<AIAnalysisPanelProps> = ({
         <div className="px-5 py-4 border-t border-slate-100 bg-white rounded-b-3xl">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => onSeek(mark.timestamp)}
+              onClick={() => onSeek(mark.timestamp / 1000)}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white text-sm font-bold rounded-xl shadow-md hover:bg-blue-700 active:scale-95 transition-all"
             >
               <Clock size={16} />

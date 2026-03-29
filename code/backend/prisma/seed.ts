@@ -27,29 +27,179 @@ async function main() {
   console.log(`✓ 默认用户: ${defaultUser.username}`)
 
   // ==================== 1. 创建课程 ====================
+  // 当前时间：2026年3月（大二下学期）
+  // 课程按照实际学习顺序编排，体现先修后继关系
   const courses = [
+    // 
+    // 【当前学期】大二下学期（2025-2026-2）：正在学习专业核心课
+    // 
+    
+    // 学习中（正在上课）
     {
-      id: '550e8400-e29b-41d4-a716-446655440001',
-      name: '高等数学',
-      status: 'STUDYING',
+      id: '550e8400-e29b-41d4-a716-446655440011',
+      name: '遥感原理与应用',
+      status: 'STUDYING',  // 学习中
       type: 'PROFESSIONAL',
-      examDate: new Date('2026-06-15'),
+      semester: '2025-2026-2',
+      examDate: new Date('2026-07-10'),
       targetGrade: 'A',
     },
     {
-      id: '550e8400-e29b-41d4-a716-446655440002',
-      name: '线性代数',
-      status: 'STUDYING',
+      id: '550e8400-e29b-41d4-a716-446655440010',
+      name: '数据库原理',
+      status: 'STUDYING',  // 学习中
       type: 'PROFESSIONAL',
-      examDate: new Date('2026-06-20'),
+      semester: '2025-2026-2',
+      examDate: new Date('2026-07-15'),
+      targetGrade: 'A',
+    },
+    
+    // 复习中（即将考试）
+    {
+      id: '550e8400-e29b-41d4-a716-446655440012',
+      name: '摄影测量学',
+      status: 'REVIEWING',  // 复习中
+      type: 'PROFESSIONAL',
+      semester: '2025-2026-2',
+      examDate: new Date('2026-06-20'),  // 即将考试
+      targetGrade: 'A',
+    },
+    {
+      id: '550e8400-e29b-41d4-a716-446655440008',
+      name: '概率论与数理统计',
+      status: 'REVIEWING',  // 复习中
+      type: 'PROFESSIONAL',
+      semester: '2025-2026-2',
+      examDate: new Date('2026-06-25'),
+      targetGrade: 'A',
+    },
+
+    // 
+    // 【上学期】大二上学期（2025-2026-1）：已结课
+    // 
+    {
+      id: '550e8400-e29b-41d4-a716-446655440007',
+      name: '地理信息系统原理',
+      status: 'ARCHIVED',  // 已结课
+      type: 'PROFESSIONAL',
+      semester: '2025-2026-1',
+      examDate: new Date('2026-01-15'),
+      targetGrade: 'A',
+    },
+    {
+      id: '550e8400-e29b-41d4-a716-446655440004',
+      name: '计算机组成原理',
+      status: 'ARCHIVED',  // 已结课
+      type: 'PROFESSIONAL',
+      semester: '2025-2026-1',
+      examDate: new Date('2026-01-18'),
       targetGrade: 'A',
     },
     {
       id: '550e8400-e29b-41d4-a716-446655440003',
-      name: '大学英语',
-      status: 'REVIEWING',
+      name: '大学英语（二）',
+      status: 'ARCHIVED',  // 已结课
       type: 'ELECTIVE',
-      examDate: new Date('2026-06-18'),
+      semester: '2025-2026-1',
+      examDate: new Date('2026-01-10'),
+      targetGrade: 'B',
+    },
+    {
+      id: '550e8400-e29b-41d4-a716-446655440014',
+      name: '大学物理',
+      status: 'ARCHIVED',  // 已结课
+      type: 'PROFESSIONAL',
+      semester: '2025-2026-1',
+      examDate: new Date('2026-01-20'),
+      targetGrade: 'B',
+    },
+
+    // 
+    // 【大一下学期】2024-2025-2：已结课
+    // 
+    {
+      id: '550e8400-e29b-41d4-a716-446655440002',
+      name: '高等数学（下）',
+      status: 'ARCHIVED',  // 已结课
+      type: 'PROFESSIONAL',
+      semester: '2024-2025-2',
+      examDate: new Date('2025-07-10'),
+      targetGrade: 'A',
+    },
+    {
+      id: '550e8400-e29b-41d4-a716-446655440006',
+      name: '线性代数',
+      status: 'ARCHIVED',  // 已结课
+      type: 'PROFESSIONAL',
+      semester: '2024-2025-2',
+      examDate: new Date('2025-07-15'),
+      targetGrade: 'A',
+    },
+    {
+      id: '550e8400-e29b-41d4-a716-446655440005',
+      name: '数据结构',
+      status: 'ARCHIVED',  // 已结课
+      type: 'PROFESSIONAL',
+      semester: '2024-2025-2',
+      examDate: new Date('2025-07-08'),
+      targetGrade: 'A',
+    },
+    {
+      id: '550e8400-e29b-41d4-a716-446655440015',
+      name: '面向对象程序设计',
+      status: 'ARCHIVED',  // 已结课
+      type: 'PROFESSIONAL',
+      semester: '2024-2025-2',
+      examDate: new Date('2025-07-12'),
+      targetGrade: 'B',
+    },
+
+    // 
+    // 【大一上学期】2024-2025-1：已结课
+    // 
+    {
+      id: '550e8400-e29b-41d4-a716-446655440001',
+      name: '高等数学（上）',
+      status: 'ARCHIVED',  // 已结课
+      type: 'PROFESSIONAL',
+      semester: '2024-2025-1',
+      examDate: new Date('2025-01-15'),
+      targetGrade: 'A',
+    },
+    {
+      id: '550e8400-e29b-41d4-a716-446655440009',
+      name: 'C语言程序设计',
+      status: 'ARCHIVED',  // 已结课
+      type: 'PROFESSIONAL',
+      semester: '2024-2025-1',
+      examDate: new Date('2025-01-10'),
+      targetGrade: 'A',
+    },
+    {
+      id: '550e8400-e29b-41d4-a716-446655440013',
+      name: '大学英语（一）',
+      status: 'ARCHIVED',  // 已结课
+      type: 'ELECTIVE',
+      semester: '2024-2025-1',
+      examDate: new Date('2025-01-12'),
+      targetGrade: 'B',
+    },
+    {
+      id: '550e8400-e29b-41d4-a716-446655440016',
+      name: '中国近现代史纲要',
+      status: 'ARCHIVED',  // 已结课
+      type: 'CROSS_MAJOR',
+      semester: '2024-2025-1',
+      examDate: new Date('2025-01-08'),
+      targetGrade: 'B',
+    },
+    {
+      id: '550e8400-e29b-41d4-a716-446655440017',
+      name: '思想道德与法治',
+      status: 'ARCHIVED',  // 已结课
+      type: 'CROSS_MAJOR',
+      semester: '2024-2025-1',
+      examDate: new Date('2025-01-05'),
       targetGrade: 'B',
     },
   ]
@@ -115,6 +265,85 @@ async function main() {
       courseId: '550e8400-e29b-41d4-a716-446655440003',
       name: 'Unit 2: Technical Writing',
       order: 2,
+    },
+    // 
+    // 【本学期课程】大二下学期（2025-2026-2）
+    // 
+    // 遥感原理与应用（学习中）
+    {
+      id: '660e8400-e29b-41d4-a716-446655440100',
+      courseId: '550e8400-e29b-41d4-a716-446655440011',
+      name: '第一章：遥感物理基础',
+      order: 1,
+    },
+    {
+      id: '660e8400-e29b-41d4-a716-446655440101',
+      courseId: '550e8400-e29b-41d4-a716-446655440011',
+      name: '第二章：遥感平台与传感器',
+      order: 2,
+    },
+    {
+      id: '660e8400-e29b-41d4-a716-446655440102',
+      courseId: '550e8400-e29b-41d4-a716-446655440011',
+      name: '第三章：遥感图像处理',
+      order: 3,
+    },
+    // 数据库原理（学习中）
+    {
+      id: '660e8400-e29b-41d4-a716-446655440110',
+      courseId: '550e8400-e29b-41d4-a716-446655440010',
+      name: '第一章：数据库系统概述',
+      order: 1,
+    },
+    {
+      id: '660e8400-e29b-41d4-a716-446655440111',
+      courseId: '550e8400-e29b-41d4-a716-446655440010',
+      name: '第二章：关系数据库',
+      order: 2,
+    },
+    {
+      id: '660e8400-e29b-41d4-a716-446655440112',
+      courseId: '550e8400-e29b-41d4-a716-446655440010',
+      name: '第三章：SQL语言',
+      order: 3,
+    },
+    // 摄影测量学（复习中）
+    {
+      id: '660e8400-e29b-41d4-a716-446655440120',
+      courseId: '550e8400-e29b-41d4-a716-446655440012',
+      name: '第一章：摄影测量基础',
+      order: 1,
+    },
+    {
+      id: '660e8400-e29b-41d4-a716-446655440121',
+      courseId: '550e8400-e29b-41d4-a716-446655440012',
+      name: '第二章：立体像对解析',
+      order: 2,
+    },
+    {
+      id: '660e8400-e29b-41d4-a716-446655440122',
+      courseId: '550e8400-e29b-41d4-a716-446655440012',
+      name: '第三章：数字摄影测量',
+      order: 3,
+    },
+    // 概率论与数理统计（复习中）
+    {
+      id: '660e8400-e29b-41d4-a716-446655440130',
+      courseId: '550e8400-e29b-41d4-a716-446655440008',
+      name: '第一章：随机事件与概率',
+      order: 1,
+    },
+    {
+      id: '660e8400-e29b-41d4-a716-446655440131',
+      courseId: '550e8400-e29b-41d4-a716-446655440008',
+      name: '第二章：随机变量及其分布',
+      order: 2,
+    },
+    {
+      id: '660e8400-e29b-41d4-a716-446655440132',
+      courseId: '550e8400-e29b-41d4-a716-446655440008',
+      name: '第三章：大数定律与中心极限定理',
+      order: 3,
     },
   ]
 
@@ -236,6 +465,117 @@ async function main() {
       importance: 7,
       masteryScore: 35,
     },
+    // 
+    // 【本学期课程】知识点 - 大二下学期
+    // 
+    // 遥感原理与应用（学习中）
+    {
+      id: '770e8400-e29b-41d4-a716-446655440100',
+      chapterId: '660e8400-e29b-41d4-a716-446655440100',
+      name: '电磁波谱与地物光谱特性',
+      status: 'STUDYING',
+      importance: 10,
+      masteryScore: 65,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440101',
+      chapterId: '660e8400-e29b-41d4-a716-446655440100',
+      name: '大气窗口与辐射传输',
+      status: 'STUDYING',
+      importance: 9,
+      masteryScore: 55,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440102',
+      chapterId: '660e8400-e29b-41d4-a716-446655440101',
+      name: ' Landsat与Sentinel卫星',
+      status: 'NEED_REVIEW',
+      importance: 8,
+      masteryScore: 45,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440103',
+      chapterId: '660e8400-e29b-41d4-a716-446655440102',
+      name: '图像增强与滤波',
+      status: 'WEAK',
+      importance: 9,
+      masteryScore: 40,
+    },
+    // 数据库原理（学习中）
+    {
+      id: '770e8400-e29b-41d4-a716-446655440110',
+      chapterId: '660e8400-e29b-41d4-a716-446655440110',
+      name: '数据模型与数据库三级模式',
+      status: 'STUDYING',
+      importance: 9,
+      masteryScore: 70,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440111',
+      chapterId: '660e8400-e29b-41d4-a716-446655440111',
+      name: '关系代数与关系运算',
+      status: 'STUDYING',
+      importance: 10,
+      masteryScore: 60,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440112',
+      chapterId: '660e8400-e29b-41d4-a716-446655440112',
+      name: 'SQL查询与数据操作',
+      status: 'NEED_REVIEW',
+      importance: 10,
+      masteryScore: 50,
+    },
+    // 摄影测量学（复习中）- 设置一些薄弱点
+    {
+      id: '770e8400-e29b-41d4-a716-446655440120',
+      chapterId: '660e8400-e29b-41d4-a716-446655440120',
+      name: '摄影机与摄影几何',
+      status: 'WEAK',  // 改为薄弱
+      importance: 10,
+      masteryScore: 35,  // 低于40分
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440121',
+      chapterId: '660e8400-e29b-41d4-a716-446655440121',
+      name: '共线方程与空间后方交会',
+      status: 'REVIEWING',
+      importance: 10,
+      masteryScore: 70,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440122',
+      chapterId: '660e8400-e29b-41d4-a716-446655440122',
+      name: '影像匹配与DEM生成',
+      status: 'WEAK',  // 改为薄弱
+      importance: 9,
+      masteryScore: 30,  // 低于40分
+    },
+    // 概率论与数理统计（复习中）- 设置一些薄弱点
+    {
+      id: '770e8400-e29b-41d4-a716-446655440130',
+      chapterId: '660e8400-e29b-41d4-a716-446655440130',
+      name: '条件概率与贝叶斯公式',
+      status: 'REVIEWING',
+      importance: 10,
+      masteryScore: 80,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440131',
+      chapterId: '660e8400-e29b-41d4-a716-446655440131',
+      name: '常见分布（正态、泊松、二项）',
+      status: 'WEAK',  // 改为薄弱
+      importance: 10,
+      masteryScore: 25,  // 低于40分
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440132',
+      chapterId: '660e8400-e29b-41d4-a716-446655440132',
+      name: '参数估计与假设检验',
+      status: 'WEAK',  // 改为薄弱
+      importance: 9,
+      masteryScore: 35,  // 低于40分
+    },
   ]
 
   for (const kpData of knowledgePoints) {
@@ -292,6 +632,101 @@ async function main() {
       duration: 2400,
       status: 'COMPLETED',
       notes: '学习行列式的定义、性质和计算方法。',
+    },
+    // 
+    // 【本学期课程】学习记录 - 大二下学期
+    // 
+    // 遥感原理与应用（学习中）
+    {
+      id: '880e8400-e29b-41d4-a716-446655440101',
+      courseId: '550e8400-e29b-41d4-a716-446655440011',
+      chapterId: '660e8400-e29b-41d4-a716-446655440100',
+      title: '遥感物理基础学习',
+      date: new Date('2026-03-10'),
+      audioUrl: '/uploads/rs-physics-basics.mp3',
+      duration: 3600,
+      status: 'COMPLETED',
+      notes: '学习了电磁波谱、地物光谱特性、大气窗口等基础概念。',
+    },
+    {
+      id: '880e8400-e29b-41d4-a716-446655440102',
+      courseId: '550e8400-e29b-41d4-a716-446655440011',
+      chapterId: '660e8400-e29b-41d4-a716-446655440101',
+      title: '遥感平台与传感器介绍',
+      date: new Date('2026-03-17'),
+      audioUrl: '/uploads/rs-platforms-sensors.mp3',
+      duration: 3300,
+      status: 'COMPLETED',
+      notes: '了解了Landsat、Sentinel等常用卫星平台及其传感器特性。',
+    },
+    // 数据库原理（学习中）
+    {
+      id: '880e8400-e29b-41d4-a716-446655440111',
+      courseId: '550e8400-e29b-41d4-a716-446655440010',
+      chapterId: '660e8400-e29b-41d4-a716-446655440110',
+      title: '数据库系统概述',
+      date: new Date('2026-03-12'),
+      audioUrl: '/uploads/db-introduction.mp3',
+      duration: 3000,
+      status: 'COMPLETED',
+      notes: '介绍了数据库系统的基本概念、发展历程和三级模式结构。',
+    },
+    {
+      id: '880e8400-e29b-41d4-a716-446655440112',
+      courseId: '550e8400-e29b-41d4-a716-446655440010',
+      chapterId: '660e8400-e29b-41d4-a716-446655440111',
+      title: '关系数据库基础',
+      date: new Date('2026-03-19'),
+      audioUrl: '/uploads/db-relational.mp3',
+      duration: 3600,
+      status: 'COMPLETED',
+      notes: '学习了关系模型、关系代数和关系数据库的基本概念。',
+    },
+    // 摄影测量学（复习中）
+    {
+      id: '880e8400-e29b-41d4-a716-446655440121',
+      courseId: '550e8400-e29b-41d4-a716-446655440012',
+      chapterId: '660e8400-e29b-41d4-a716-446655440120',
+      title: '摄影测量基础复习',
+      date: new Date('2026-03-15'),
+      audioUrl: '/uploads/photo-basics-review.mp3',
+      duration: 2700,
+      status: 'COMPLETED',
+      notes: '复习了摄影机结构、摄影几何、内方位元素和外方位元素。',
+    },
+    {
+      id: '880e8400-e29b-41d4-a716-446655440122',
+      courseId: '550e8400-e29b-41d4-a716-446655440012',
+      chapterId: '660e8400-e29b-41d4-a716-446655440121',
+      title: '立体像对解析复习',
+      date: new Date('2026-03-20'),
+      audioUrl: '/uploads/photo-stereo-review.mp3',
+      duration: 3000,
+      status: 'COMPLETED',
+      notes: '复习了共线方程、空间后方交会、前方交会等重要内容。',
+    },
+    // 概率论与数理统计（复习中）
+    {
+      id: '880e8400-e29b-41d4-a716-446655440131',
+      courseId: '550e8400-e29b-41d4-a716-446655440008',
+      chapterId: '660e8400-e29b-41d4-a716-446655440130',
+      title: '随机事件与概率复习',
+      date: new Date('2026-03-14'),
+      audioUrl: '/uploads/probability-review.mp3',
+      duration: 3300,
+      status: 'COMPLETED',
+      notes: '复习了条件概率、贝叶斯公式、全概率公式等重要概念。',
+    },
+    {
+      id: '880e8400-e29b-41d4-a716-446655440132',
+      courseId: '550e8400-e29b-41d4-a716-446655440008',
+      chapterId: '660e8400-e29b-41d4-a716-446655440132',
+      title: '数理统计方法复习',
+      date: new Date('2026-03-21'),
+      audioUrl: '/uploads/statistics-review.mp3',
+      duration: 3600,
+      status: 'COMPLETED',
+      notes: '复习了点估计、区间估计、假设检验等统计推断方法。',
     },
   ]
 

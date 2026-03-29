@@ -47,7 +47,7 @@ declare global {
     webkitSpeechRecognition: new () => SpeechRecognition;
   }
 }
-import { Mic, Square, Camera, Flag, Upload, ArrowLeft, ChevronDown, Play, Zap, Type, X, Search, Check, Loader2, AlertCircle, CheckCircle, Pause, Download, RotateCcw, Plus } from 'lucide-react';
+import { Mic, Square, Camera, Flag, Upload, ArrowLeft, ChevronDown, Play, Zap, Type, X, Search, Check, Loader2, AlertCircle, CheckCircle, Pause, Download, RotateCcw, Plus, BookOpen } from 'lucide-react';
 import { Course, Chapter } from '../types';
 import { getCourseList, createCourse } from '../src/api/courses';
 import { getChapterList, createChapter } from '../src/api/chapters';
@@ -55,18 +55,44 @@ import { createStudyRecord, getStudyRecordList } from '../src/api/studyRecords';
 import { uploadAudio, uploadImage, uploadDocument, deleteFile } from '../src/api/upload';
 import { semanticAnalysis } from '../src/api/audio';
 import { batchCreateTimeMarks } from '../src/api/timeMarks';
+import { convertPPT } from '../src/api/pptConverter';
+import { API_CONFIG } from '../src/api/request';
+
+// 获取完整图片URL
+const getFullImageUrl = (url: string) => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  return `${API_CONFIG.BASE_URL}${url}`;
+};
 
 interface RecorderProps {
   onBack: () => void;
+  onSaveSuccess?: (recordId: string) => void;
   initialCourseName?: string;
 }
 
-const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
+// 本地时间标记类型
+interface LocalTimeMark {
+  id: string;
+  timestamp: number;
+  type: 'EMPHASIS' | 'QUESTION' | 'NOTE';
+  content?: string;
+}
+
+const Recorder: React.FC<RecorderProps> = ({ onBack, onSaveSuccess, initialCourseName }) => {
   // 修改初始状态：默认为暂停，计时从 0 开始
   const [isRecording, setIsRecording] = useState(false);
   const [duration, setDuration] = useState(0);
   const [imageCount, setImageCount] = useState(0);
   const [noteText, setNoteText] = useState('');
+  
+  // 本地时间标记（录音过程中暂存）
+  const [localTimeMarks, setLocalTimeMarks] = useState<LocalTimeMark[]>([]);
+  const [showMarkModal, setShowMarkModal] = useState(false);
+  const [markContent, setMarkContent] = useState('');
+  const [markType, setMarkType] = useState<'EMPHASIS' | 'QUESTION' | 'NOTE'>('EMPHASIS');
 
   // API 数据
   const [courses, setCourses] = useState<Course[]>([]);
@@ -81,24 +107,38 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
   const [showChapterPicker, setShowChapterPicker] = useState(false);
   const [searchText, setSearchText] = useState('');
 
-  // 加载课程列表
+  // 加载课程列表（只显示本学期课程：学习中和复习中）
   const fetchCourses = useCallback(async () => {
     setCoursesLoading(true);
     try {
-      const response = await getCourseList();
-      if (response.success && response.data) {
-        setCourses(response.data);
+      // 并行获取学习中和复习中的课程
+      const [studyingRes, reviewingRes] = await Promise.all([
+        getCourseList({ status: 'STUDYING' }),
+        getCourseList({ status: 'REVIEWING' })
+      ]);
+      
+      const studyingCourses = studyingRes.success && studyingRes.data ? studyingRes.data : [];
+      const reviewingCourses = reviewingRes.success && reviewingRes.data ? reviewingRes.data : [];
+      
+      // 合并课程列表
+      const activeCourses = [...studyingCourses, ...reviewingCourses];
+      
+      if (activeCourses.length > 0) {
+        setCourses(activeCourses);
         // 如果有初始课程名，找到对应的ID
         if (initialCourseName) {
-          const course = response.data.find(c => c.name === initialCourseName);
+          const course = activeCourses.find(c => c.name === initialCourseName);
           if (course) {
             setSelectedCourseId(course.id);
             setCourseName(course.name);
           }
-        } else if (response.data.length > 0) {
-          setSelectedCourseId(response.data[0].id);
-          setCourseName(response.data[0].name);
+        } else {
+          // 默认选择第一个进行中的课程
+          setSelectedCourseId(activeCourses[0].id);
+          setCourseName(activeCourses[0].name);
         }
+      } else {
+        setCourses([]);
       }
     } catch (err) {
       console.error('加载课程失败', err);
@@ -289,20 +329,14 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
     // 定义允许的文件类型
     const allowedAudioTypes = ['audio/mpeg', 'audio/wav', 'audio/m4a', 'audio/x-m4a', 'audio/mp3', 'audio/webm', 'audio/ogg'];
     const allowedDocumentTypes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-powerpoint',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      'application/pdf'  // 只接受PDF，PPT请用户自行转换
     ];
 
     const isAudio = allowedAudioTypes.includes(file.type);
     const isDocument = allowedDocumentTypes.includes(file.type);
 
     if (!isAudio && !isDocument) {
-      setError('仅支持音频（MP3、WAV、M4A、WebM）或文档（PDF、Word、PowerPoint、Excel）格式');
+      setError('音频支持 MP3、WAV、M4A、WebM；文档仅支持 PDF（PPT请先转换为PDF）');
       return;
     }
 
@@ -331,7 +365,11 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
             url: response.data.url,
             originalName: response.data.originalName
           });
-          showSuccess('文档上传成功！');
+          
+          // PDF直接保存URL
+          console.log('[Recorder] PDF uploaded:', response.data.url);
+          setHasPDF(true);
+          showSuccess('PDF 上传成功！');
         } else {
           setError(response.error || '上传失败');
         }
@@ -340,7 +378,12 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
         const response = await uploadAudio(file);
         if (response.success && response.data) {
           setRecordedAudioUrl(response.data.url);
-          showSuccess('音频上传成功！');
+          // 对于上传的音频文件，设置一个默认时长（用于显示保存按钮）
+          // 实际时长会在后端分析时更新
+          if (duration === 0) {
+            setDuration(1); // 设置1秒作为标记，表示有音频
+          }
+          showSuccess('音频上传成功！请点击保存按钮完成分析');
         } else {
           setError(response.error || '上传失败');
         }
@@ -454,6 +497,22 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
   const documentInputRef = useRef<HTMLInputElement>(null);
   const [documentUploading, setDocumentUploading] = useState(false);
   const [uploadedDocument, setUploadedDocument] = useState<{ url: string; originalName: string } | null>(null);
+  const [hasPDF, setHasPDF] = useState(false);  // 是否上传了PDF课件
+
+  // 转换 PPT 为图片（调用后端 API）
+  const convertAndUploadPPT = async (serverFilePath: string): Promise<string[]> => {
+    console.log('[Recorder] Converting PPT via backend API:', serverFilePath);
+    
+    const result = await convertPPT(serverFilePath);
+    
+    if (!result.success || !result.data) {
+      console.error('[Recorder] PPT conversion failed:', result.error);
+      throw new Error(result.error || 'PPT conversion failed');
+    }
+    
+    console.log(`[Recorder] PPT converted: ${result.data.pageCount} pages, ${result.data.imageUrls.length} images uploaded`);
+    return result.data.imageUrls;
+  };
 
   // 处理文档上传
   const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -483,13 +542,18 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
     setError(null);
 
     try {
+      // 1. 上传原始文档
       const response = await uploadDocument(file);
       if (response.success && response.data) {
         setUploadedDocument({
           url: response.data.url,
           originalName: response.data.originalName
         });
-        showSuccess('文档上传成功！');
+        
+        // 2. PDF上传成功
+        console.log('[Recorder] PDF uploaded:', response.data.url);
+        setHasPDF(true);
+        showSuccess('PDF 上传成功！');
       } else {
         setError(response.error || '上传失败');
       }
@@ -522,6 +586,7 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       }
     }
     setUploadedDocument(null);
+    setPptContent(null);
   };
 
   // Save Study Record Handler
@@ -614,52 +679,87 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       // 获取上传的图片URL列表
       const imageUrls = uploadedImages.map(img => img.url);
 
+      // 合并笔记文本和语音转写文本
+      const combinedNotes = [transcription, noteText].filter(Boolean).join('\n\n---\n\n');
+      
+      console.log('[Recorder] Saving study record with:');
+      console.log('[Recorder] - transcription length:', transcription?.length || 0);
+      console.log('[Recorder] - noteText length:', noteText?.length || 0);
+      console.log('[Recorder] - combinedNotes length:', combinedNotes?.length || 0);
+      console.log('[Recorder] - combinedNotes preview:', combinedNotes?.substring(0, 200));
+      
       const response = await createStudyRecord({
         courseId: finalCourseId,
         chapterId: finalChapterId,
         title: recordTitle,
         date: new Date().toISOString(),
         audioUrl: audioUrl || undefined,
-        notes: noteText || undefined,
+        documentUrl: uploadedDocument?.url || undefined,
+        notes: combinedNotes || undefined,
         duration: duration,
-        status: audioUrl ? 'COMPLETED' : 'RECORDING',
+        status: (audioUrl || uploadedDocument || hasPDF) ? 'COMPLETED' : 'RECORDING',
         imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
       });
 
       if (response.success) {
-        // 保存成功后，进行AI语义分析
+        // 保存成功后，进行多模态AI分析
         const recordId = response.data?.id;
-        if (recordId && audioUrl) {
+        const hasAudio = !!audioUrl;
+        const hasDocument = !!uploadedDocument;
+        const hasImages = uploadedImages.length > 0;
+        
+        console.log('[Recorder] 学习记录保存成功，recordId:', recordId);
+        console.log('[Recorder] 内容统计:', { audio: hasAudio, document: hasDocument, images: hasImages });
+        
+        // 批量创建本地时间标记（必须在多模态分析之前完成，确保标记被保存）
+        console.log('[Recorder] 检查时间标记:', { recordId, marksCount: localTimeMarks.length, marks: localTimeMarks });
+        if (recordId && localTimeMarks.length > 0) {
           try {
-            console.log('[Recorder] 开始AI语义分析，学习记录ID:', recordId);
-            const analysisRes = await semanticAnalysis(recordId);
-
-            if (analysisRes.success && analysisRes.data?.semanticMarks?.length > 0) {
-              console.log('[Recorder] 语义分析完成，标记点数:', analysisRes.data.semanticMarks.length);
-
-              // 将语义标记点批量创建为时间标记
-              const timeMarksData = analysisRes.data.semanticMarks.map((mark: any) => ({
-                studyRecordId: recordId,
-                type: mark.type === '知识点' ? 'EMPHASIS' :
-                      mark.type === '重点' ? 'EMPHASIS' :
-                      mark.type === '例题' ? 'NOTE' :
-                      mark.type === '小结' ? 'SUMMARY' :
-                      mark.type === '疑问' ? 'QUESTION' : 'NOTE',
-                timestamp: mark.timestamp,
-                content: mark.content,
-              }));
-
-              const batchRes = await batchCreateTimeMarks(timeMarksData);
-              if (batchRes.success) {
-                console.log('[Recorder] 语义标记点已保存，成功创建', timeMarksData.length, '个标记');
-              } else {
-                console.warn('[Recorder] 批量创建标记点失败:', batchRes.error);
-              }
+            console.log('[Recorder] 开始批量创建时间标记:', localTimeMarks.length);
+            const timeMarksToCreate = localTimeMarks.map(mark => ({
+              type: mark.type,
+              timestamp: mark.timestamp,
+              content: mark.content,
+            }));
+            console.log('[Recorder] 准备发送的时间标记:', timeMarksToCreate);
+            
+            const marksRes = await batchCreateTimeMarks(recordId, timeMarksToCreate);
+            console.log('[Recorder] 批量创建时间标记响应:', marksRes);
+            if (marksRes.success) {
+              console.log('[Recorder] 时间标记创建成功，数量:', marksRes.data?.count);
+              // 标记创建成功后，等待一小段时间确保数据库写入完成
+              await new Promise(resolve => setTimeout(resolve, 500));
             } else {
-              console.log('[Recorder] 语义分析未返回有效标记点:', analysisRes.data);
+              console.warn('[Recorder] 时间标记创建失败:', marksRes.error);
+            }
+          } catch (markErr) {
+            console.error('[Recorder] 批量创建时间标记异常:', markErr);
+          }
+        } else {
+          console.log('[Recorder] 跳过创建时间标记:', { hasRecordId: !!recordId, marksLength: localTimeMarks.length });
+        }
+        
+        // 多模态分析（在标记创建完成后执行）
+        if (recordId && (hasAudio || hasDocument || hasImages)) {
+          try {
+            console.log('[Recorder] 开始多模态分析，学习记录ID:', recordId);
+            
+            // 导入多模态分析API
+            const { analyzeMultimodal } = await import('../src/api/multimodal');
+            const analysisRes = await analyzeMultimodal(recordId);
+
+            if (analysisRes.success && analysisRes.data) {
+              console.log('[Recorder] 多模态分析完成:', {
+                audio: analysisRes.data.audioMarksCount,
+                ppt: analysisRes.data.pptMarksCount,
+                images: analysisRes.data.imageMarksCount,
+                total: analysisRes.data.totalMarks
+              });
+            } else {
+              console.warn('[Recorder] 多模态分析失败:', analysisRes.error);
             }
           } catch (analysisErr) {
-            console.error('[Recorder] 语义分析异常:', analysisErr);
+            console.error('[Recorder] 多模态分析异常:', analysisErr);
           }
         }
 
@@ -673,9 +773,17 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
         setRecordedImages([]);
         setDuration(0);
         setImageCount(0);
-        // Navigate back after short delay
+        setHasPDF(false);
+        setUploadedDocument(null);
+        setUploadedImages([]);
+        setLocalTimeMarks([]); // 清空本地标记
+        // Navigate to TimeMachine or back after short delay
         setTimeout(() => {
-          onBack();
+          if (onSaveSuccess && response.data?.id) {
+            onSaveSuccess(response.data.id);
+          } else {
+            onBack();
+          }
         }, 1500);
       } else {
         setError(response.error || '保存失败');
@@ -685,6 +793,41 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 处理旗子按钮点击 - 添加时间标记
+  const handleFlagClick = () => {
+    if (!isRecording) {
+      // 未录音时提示
+      return;
+    }
+    setMarkContent('');
+    setMarkType('EMPHASIS');
+    setShowMarkModal(true);
+  };
+
+  // 确认添加标记
+  const confirmAddMark = () => {
+    const newMark: LocalTimeMark = {
+      id: `local-${Date.now()}`,
+      timestamp: duration * 1000, // 转换为毫秒
+      type: markType,
+      content: markContent.trim() || undefined,
+    };
+    setLocalTimeMarks(prev => [...prev, newMark]);
+    setShowMarkModal(false);
+    setMarkContent('');
+  };
+
+  // 取消添加标记
+  const cancelAddMark = () => {
+    setShowMarkModal(false);
+    setMarkContent('');
+  };
+
+  // 删除本地标记
+  const removeLocalMark = (id: string) => {
+    setLocalTimeMarks(prev => prev.filter(m => m.id !== id));
   };
 
   // Start Recording
@@ -874,36 +1017,112 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
     }
   }, [showSaveConfirm]);
 
-  // 弹窗打开时获取音频时长 - 使用 AudioContext
+  // 获取完整音频 URL（处理相对路径）
+  const getFullAudioUrl = (url: string): string => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    if (url.startsWith('/')) {
+      return `${API_CONFIG.BASE_URL}${url}`;
+    }
+    return url;
+  };
+
+  // 弹窗打开时获取音频时长
   useEffect(() => {
     if (showSaveConfirm && recordedAudioUrl) {
       // 重置状态
       setPopupCurrentTime(0);
       setPopupDuration(0);
 
-      // 使用 AudioContext 获取 blob URL 的准确时长
+      // 使用 audio 元素获取时长（兼容性更好）
       const fetchAudioDuration = async () => {
-        try {
-          const response = await fetch(recordedAudioUrl);
-          const blob = await response.blob();
-          const arrayBuffer = await blob.arrayBuffer();
-          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-          const duration = audioBuffer.duration;
-          console.log('AudioContext duration:', duration);
-          setPopupDuration(duration);
-          audioContext.close();
-        } catch (err) {
-          console.error('获取音频时长失败:', err);
-          // 备用方案：使用 audio 元素
-          if (popupAudioRef.current) {
-            popupAudioRef.current.load();
-            setTimeout(() => {
-              if (popupAudioRef.current && popupAudioRef.current.duration && !isNaN(popupAudioRef.current.duration)) {
-                setPopupDuration(popupAudioRef.current.duration);
-              }
-            }, 500);
+        const audioUrl = getFullAudioUrl(recordedAudioUrl);
+        console.log('[Recorder] 尝试获取音频时长:', audioUrl);
+        
+        const audio = new Audio();
+        
+        // 处理跨域
+        audio.crossOrigin = 'anonymous';
+        audio.src = audioUrl;
+        audio.preload = 'metadata';
+        
+        // 设置超时
+        const timeout = setTimeout(() => {
+          console.warn('[Recorder] 获取音频时长超时');
+          // 如果是 blob URL，尝试通过 fetch 获取
+          if (recordedAudioUrl.startsWith('blob:')) {
+            fetchBlobDuration(recordedAudioUrl);
           }
+        }, 3000);
+        
+        audio.onloadedmetadata = () => {
+          clearTimeout(timeout);
+          if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+            console.log('[Recorder] 音频时长:', audio.duration);
+            setPopupDuration(audio.duration);
+            // 同时更新学习记录时长
+            setDuration(Math.floor(audio.duration));
+          }
+        };
+        
+        audio.oncanplaythrough = () => {
+          clearTimeout(timeout);
+          if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+            console.log('[Recorder] 音频时长 (canplaythrough):', audio.duration);
+            setPopupDuration(audio.duration);
+            setDuration(Math.floor(audio.duration));
+          }
+        };
+        
+        audio.onerror = (e) => {
+          clearTimeout(timeout);
+          console.warn('[Recorder] 无法获取音频时长:', e);
+          // 尝试备用方案
+          fetchBlobDuration(audioUrl);
+        };
+        
+        // 尝试加载
+        audio.load();
+      };
+      
+      // 备用方案：通过 fetch 获取 blob 然后使用 AudioContext
+      const fetchBlobDuration = async (url: string) => {
+        try {
+          const response = await fetch(url);
+          const blob = await response.blob();
+          
+          // 根据文件大小估算时长（假设平均比特率 128kbps）
+          // 128kbps = 16KB/s
+          const estimatedDuration = Math.floor(blob.size / 16000);
+          if (estimatedDuration > 0) {
+            console.log('[Recorder] 估算音频时长:', estimatedDuration);
+            setPopupDuration(estimatedDuration);
+            setDuration(estimatedDuration);
+            return;
+          }
+          
+          // 尝试使用 AudioContext
+          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const arrayBuffer = await blob.arrayBuffer();
+          
+          try {
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            console.log('[Recorder] AudioContext 时长:', audioBuffer.duration);
+            setPopupDuration(audioBuffer.duration);
+            setDuration(Math.floor(audioBuffer.duration));
+          } catch (decodeErr) {
+            console.warn('[Recorder] AudioContext 解码失败，使用估算时长');
+            // 使用估算时长
+            if (estimatedDuration > 0) {
+              setPopupDuration(estimatedDuration);
+              setDuration(estimatedDuration);
+            }
+          } finally {
+            audioContext.close();
+          }
+        } catch (err) {
+          console.error('[Recorder] fetchBlobDuration 失败:', err);
         }
       };
 
@@ -972,8 +1191,8 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
         </div>
 
         <div className="flex items-center space-x-3">
-            {/* 保存按钮 - 当有时长或笔记时显示 */}
-            {(duration > 0 || noteText) && !isRecording && (
+            {/* 保存按钮 - 当有时长、笔记或已上传音频时显示 */}
+            {(duration > 0 || noteText || recordedAudioUrl) && !isRecording && (
                 <button
                     onClick={async () => {
                         // 获取章节名称
@@ -1085,7 +1304,7 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
                             <p className="text-blue-600">已上传 {uploadedImages.length} 张图片</p>
                           )}
                           {uploadedDocument && (
-                            <p className="text-purple-600">已上传文档：{uploadedDocument.originalName}</p>
+                            <p className="text-purple-600">已上传文档：{uploadedDocument.originalName} {hasPDF && '(PDF课件)'}</p>
                           )}
                           {noteText && <p>笔记字数：{noteText.length}</p>}
                       </div>
@@ -1194,8 +1413,99 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
           </div>
       )}
 
+      {/* 标记弹窗 */}
+      {showMarkModal && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center">
+          <div 
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm" 
+            onClick={cancelAddMark}
+          />
+          <div className="bg-white w-full max-w-md rounded-t-[32px] p-6 z-[110] shadow-2xl animate-in slide-in-from-bottom">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-black text-slate-800">添加标记</h3>
+              <button onClick={cancelAddMark} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200">
+                <X size={20} />
+              </button>
+            </div>
+            
+            {/* 标记类型选择 */}
+            <div className="mb-4">
+              <p className="text-sm font-bold text-slate-600 mb-3">标记类型</p>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setMarkType('EMPHASIS')}
+                  className={`flex-1 py-3 rounded-xl font-medium text-sm transition-all ${
+                    markType === 'EMPHASIS'
+                      ? 'bg-yellow-100 text-yellow-700 border-2 border-yellow-300'
+                      : 'bg-slate-50 text-slate-600 border-2 border-transparent'
+                  }`}
+                >
+                  <span className="mr-1">⭐</span> 重点
+                </button>
+                <button
+                  onClick={() => setMarkType('QUESTION')}
+                  className={`flex-1 py-3 rounded-xl font-medium text-sm transition-all ${
+                    markType === 'QUESTION'
+                      ? 'bg-purple-100 text-purple-700 border-2 border-purple-300'
+                      : 'bg-slate-50 text-slate-600 border-2 border-transparent'
+                  }`}
+                >
+                  <span className="mr-1">❓</span> 疑问
+                </button>
+                <button
+                  onClick={() => setMarkType('NOTE')}
+                  className={`flex-1 py-3 rounded-xl font-medium text-sm transition-all ${
+                    markType === 'NOTE'
+                      ? 'bg-blue-100 text-blue-700 border-2 border-blue-300'
+                      : 'bg-slate-50 text-slate-600 border-2 border-transparent'
+                  }`}
+                >
+                  <span className="mr-1">📝</span> 笔记
+                </button>
+              </div>
+            </div>
+
+            {/* 当前时间显示 */}
+            <div className="mb-4 p-3 bg-slate-50 rounded-xl">
+              <p className="text-xs text-slate-400 mb-1">标记时间</p>
+              <p className="text-lg font-black text-slate-800">
+                {Math.floor(duration / 60).toString().padStart(2, '0')}:
+                {(duration % 60).toString().padStart(2, '0')}
+              </p>
+            </div>
+
+            {/* 备注输入 */}
+            <div className="mb-6">
+              <p className="text-sm font-bold text-slate-600 mb-3">备注（可选）</p>
+              <textarea
+                value={markContent}
+                onChange={(e) => setMarkContent(e.target.value)}
+                placeholder="输入标记内容..."
+                className="w-full h-24 p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 placeholder:text-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              />
+            </div>
+
+            {/* 按钮 */}
+            <div className="flex space-x-3">
+              <button
+                onClick={cancelAddMark}
+                className="flex-1 px-4 py-3 border border-slate-200 rounded-xl text-slate-600 font-medium hover:bg-slate-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmAddMark}
+                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700"
+              >
+                添加标记
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 【2】课程信息区 - 可点击切换 */}
-      <div className="px-6 mb-3 z-10">
+      <div className="px-6 mb-3 z-10 flex-shrink-0">
         {/* 课程选择 */}
         <div
           className="flex items-center cursor-pointer active:opacity-70 transition-opacity group"
@@ -1238,7 +1548,10 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
         )}
       </div>
 
-      {/* 【3】AI 语音采集区 */}
+      {/* 【3】中间可滚动内容区 */}
+      <div className="flex-1 overflow-y-auto z-10 pb-44">
+
+      {/* 【3.1】AI 语音采集区 */}
       <div className="px-6 mb-3 z-10">
         <div className="bg-white border border-slate-100 rounded-[28px] p-4 relative overflow-hidden shadow-sm">
             <div className="flex justify-between items-center mb-4">
@@ -1366,6 +1679,60 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
         </div>
       </div>
 
+      {/* 【3.5】实时标记列表 - 当有标记时显示 */}
+      {localTimeMarks.length > 0 && (
+        <div className="px-6 mb-3 z-10">
+          <div className="bg-white border border-slate-100 rounded-[20px] p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center space-x-2">
+                <Flag size={14} className="text-blue-500" />
+                <h3 className="text-sm font-bold text-slate-700">实时标记</h3>
+                <span className="text-xs text-slate-400">({localTimeMarks.length})</span>
+              </div>
+              <button
+                onClick={() => setLocalTimeMarks([])}
+                className="text-xs text-red-500 hover:text-red-600"
+              >
+                清空
+              </button>
+            </div>
+            <div className="space-y-2 max-h-32 overflow-y-auto">
+              {localTimeMarks.map((mark) => (
+                <div
+                  key={mark.id}
+                  className={`flex items-center justify-between p-2 rounded-xl ${
+                    mark.type === 'EMPHASIS'
+                      ? 'bg-yellow-50 border border-yellow-100'
+                      : mark.type === 'QUESTION'
+                      ? 'bg-purple-50 border border-purple-100'
+                      : 'bg-blue-50 border border-blue-100'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2 flex-1 min-w-0">
+                    <span className="text-xs">
+                      {mark.type === 'EMPHASIS' ? '⭐' : mark.type === 'QUESTION' ? '❓' : '📝'}
+                    </span>
+                    <span className="text-xs font-medium text-slate-600">
+                      {Math.floor(mark.timestamp / 60000).toString().padStart(2, '0')}:
+                      {Math.floor((mark.timestamp % 60000) / 1000).toString().padStart(2, '0')}
+                    </span>
+                    {mark.content && (
+                      <span className="text-xs text-slate-500 truncate flex-1">{mark.content}</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => removeLocalMark(mark.id)}
+                    className="ml-2 p-1 text-slate-400 hover:text-red-500 transition-colors"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 【4】随心记区域 - 拉长高度至 h-60 (约 240px) */}
       <div className="px-6 mb-3 z-10 h-60 flex flex-col">
         <div className="bg-white border border-slate-100 rounded-[28px] p-5 flex-1 flex flex-col shadow-sm">
@@ -1399,11 +1766,20 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
             </div>
             {/* 已上传文档显示 */}
             {uploadedDocument && (
-              <div className="mb-2 p-2 bg-blue-50 rounded-lg flex items-center justify-between">
-                <span className="text-xs text-blue-600 truncate">{uploadedDocument.originalName}</span>
-                <button onClick={removeDocument} className="text-blue-400 hover:text-blue-600">
-                  <X size={14} />
-                </button>
+              <div className="mb-2 p-2 bg-blue-50 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-blue-600 truncate">{uploadedDocument.originalName}</span>
+                  <button onClick={removeDocument} className="text-blue-400 hover:text-blue-600">
+                    <X size={14} />
+                  </button>
+                </div>
+                {/* PDF 标记 */}
+                {hasPDF && (
+                  <div className="mt-2">
+                    <p className="text-[10px] text-blue-500 mb-1">PDF 课件</p>
+                    <p className="text-[10px] text-slate-500">可在时光机中查看完整课件</p>
+                  </div>
+                )}
               </div>
             )}
             <textarea
@@ -1447,9 +1823,13 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
                     {uploadedImages.length > 0 ? (
                       <>
                         <img
-                          src={uploadedImages[uploadedImages.length - 1].url}
+                          src={getFullImageUrl(uploadedImages[uploadedImages.length - 1].url)}
                           className="w-full h-full object-cover"
                           alt="Preview"
+                          onError={(e) => {
+                            console.error('Image load error:', uploadedImages[uploadedImages.length - 1].url);
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
                         />
                         {uploadedImages.length > 1 && (
                           <div className="absolute top-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded">
@@ -1471,10 +1851,13 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
         </div>
       </div>
 
+      {/* 中间可滚动内容区结束 */}
+      </div>
+
       {/* 【6】底部主操作区 */}
-      <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-[#F7F9FC] via-[#F7F9FC]/95 to-transparent z-20 px-10 flex flex-col items-center justify-end pb-8">
+      <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-[#F7F9FC] via-[#F7F9FC]/95 to-transparent z-20 px-10 flex flex-col items-center justify-end pb-8 pointer-events-none">
         
-        <div className="flex items-end justify-between w-full max-w-sm">
+        <div className="flex items-end justify-between w-full max-w-sm pointer-events-auto">
             {/* 上传按钮 */}
             <button
               onClick={triggerFileUpload}
@@ -1520,8 +1903,21 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
       </div>
 
       {/* 侧边快捷标记 */}
-      <button className="absolute right-4 top-[45%] -translate-y-1/2 z-20 w-11 h-11 bg-white border border-slate-100 rounded-full shadow-lg flex items-center justify-center text-slate-400 active:bg-blue-50 active:text-blue-600 transition-all">
+      <button 
+        onClick={handleFlagClick}
+        className={`absolute right-4 top-[45%] -translate-y-1/2 z-20 w-11 h-11 bg-white border border-slate-100 rounded-full shadow-lg flex items-center justify-center transition-all ${
+          isRecording 
+            ? 'text-blue-500 hover:bg-blue-50 active:scale-95' 
+            : 'text-slate-300 cursor-not-allowed'
+        }`}
+        disabled={!isRecording}
+      >
         <Flag size={18} />
+        {localTimeMarks.length > 0 && (
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+            {localTimeMarks.length}
+          </span>
+        )}
       </button>
 
       {/* 【7】课程选择 Picker (Bottom Sheet) */}
@@ -1565,6 +1961,16 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, initialCourseName }) => {
                              </div>
                              <Check size={18} className="text-blue-600" />
                          </button>
+                     )}
+
+                     {filteredCourses.length === 0 && !searchText && (
+                         <div className="flex flex-col items-center justify-center py-12 text-center">
+                             <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                                 <BookOpen size={28} className="text-slate-400" />
+                             </div>
+                             <p className="text-sm font-bold text-slate-600 mb-1">暂无本学期课程</p>
+                             <p className="text-xs text-slate-400">请先添加学习中的课程</p>
+                         </div>
                      )}
 
                      {filteredCourses.map(course => {

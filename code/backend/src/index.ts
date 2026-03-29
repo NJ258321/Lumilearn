@@ -40,6 +40,7 @@ import questionRoutes from './routes/questions.js'
 import examRoutes from './routes/exams.js'
 import handwritingRoutes from './routes/handwriting.js'
 import planningRoutes from './routes/planning.js'
+import multimodalRoutes from './routes/multimodal.js'
 
 // Initialize Express app
 const app = express()
@@ -131,6 +132,7 @@ app.use('/api', settingsRoutes)
 app.use('/api', questionRoutes)
 app.use('/api', handwritingRoutes)
 app.use('/api', planningRoutes)
+app.use('/api/study-records', multimodalRoutes)
 
 // ==================== Error Handlers ====================
 

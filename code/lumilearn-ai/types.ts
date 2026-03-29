@@ -126,6 +126,7 @@ export interface TimeMark {
   pptPage?: number
   content?: string  // 后端用 content 字段
   imageUrl?: string
+  aiAnalysis?: string // AI分析结果（JSON字符串）
   knowledgePointId?: string
   createdAt: string
   updatedAt?: string
