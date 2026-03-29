@@ -200,11 +200,17 @@ export async function getExamStatistics(
 
 // 获取错题本
 export async function getMistakes(
-  knowledgePointId?: string
+  knowledgePointId?: string,
+  courseId?: string
 ): Promise<ApiResponse<MistakesResponse>> {
   try {
-    const url = knowledgePointId
-      ? `${API_CONFIG.endpoints.exams.mistakes}?knowledgePointId=${knowledgePointId}`
+    const params = new URLSearchParams();
+    if (knowledgePointId) params.append('knowledgePointId', knowledgePointId);
+    if (courseId) params.append('courseId', courseId);
+    
+    const queryString = params.toString();
+    const url = queryString
+      ? `${API_CONFIG.endpoints.exams.mistakes}?${queryString}`
       : API_CONFIG.endpoints.exams.mistakes;
 
     const response = await api.get<any>(url);
@@ -217,7 +223,7 @@ export async function getMistakes(
     const mistakes = (Array.isArray(response.data) ? response.data : response.data.mistakes || []).map((item: any) => ({
       questionId: item.id,
       content: item.question,
-      options: item.options ? JSON.parse(item.options) : undefined,
+      options: item.options,  // 后端已解析为对象
       userAnswer: item.userAnswer,
       correctAnswer: item.correctAnswer,
       reason: item.reason,

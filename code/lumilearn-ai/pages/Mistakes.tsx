@@ -10,17 +10,18 @@ import type { MistakesResponse } from '../src/types/api';
 
 interface MistakesProps {
   onNavigate: (view: AppView, data?: any) => void;
+  courseId?: string | null;
 }
 
-const Mistakes: React.FC<MistakesProps> = ({ onNavigate }) => {
+const Mistakes: React.FC<MistakesProps> = ({ onNavigate, courseId }) => {
   const [loading, setLoading] = useState(true);
   const [mistakesData, setMistakesData] = useState<MistakesResponse | null>(null);
 
-  // Fetch mistakes
+  // Fetch mistakes - 如果传入 courseId，只获取该课程的错题
   const fetchMistakes = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await getMistakes();
+      const response = await getMistakes(undefined, courseId || undefined);
       if (response.success && response.data) {
         setMistakesData(response.data);
       }
@@ -29,15 +30,15 @@ const Mistakes: React.FC<MistakesProps> = ({ onNavigate }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [courseId]);
 
   useEffect(() => {
     fetchMistakes();
   }, [fetchMistakes]);
 
   // 点击错题进入详情页面
-  const handleMistakeClick = () => {
-    onNavigate(AppView.MISTAKE_DETAIL);
+  const handleMistakeClick = (index: number) => {
+    onNavigate(AppView.MISTAKE_DETAIL, { mistakeIndex: index });
   };
 
   if (loading) {
@@ -106,7 +107,7 @@ const Mistakes: React.FC<MistakesProps> = ({ onNavigate }) => {
             {mistakesData.mistakes.map((mistake, index) => (
               <div
                 key={mistake.questionId}
-                onClick={handleMistakeClick}
+                onClick={() => handleMistakeClick(index)}
                 className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 active:scale-[0.98] transition-transform"
               >
                 <div className="flex items-start justify-between">

@@ -47,7 +47,7 @@ declare global {
     webkitSpeechRecognition: new () => SpeechRecognition;
   }
 }
-import { Mic, Square, Camera, Flag, Upload, ArrowLeft, ChevronDown, Play, Zap, Type, X, Search, Check, Loader2, AlertCircle, CheckCircle, Pause, Download, RotateCcw, Plus } from 'lucide-react';
+import { Mic, Square, Camera, Flag, Upload, ArrowLeft, ChevronDown, Play, Zap, Type, X, Search, Check, Loader2, AlertCircle, CheckCircle, Pause, Download, RotateCcw, Plus, BookOpen } from 'lucide-react';
 import { Course, Chapter } from '../types';
 import { getCourseList, createCourse } from '../src/api/courses';
 import { getChapterList, createChapter } from '../src/api/chapters';
@@ -73,12 +73,26 @@ interface RecorderProps {
   initialCourseName?: string;
 }
 
+// 本地时间标记类型
+interface LocalTimeMark {
+  id: string;
+  timestamp: number;
+  type: 'EMPHASIS' | 'QUESTION' | 'NOTE';
+  content?: string;
+}
+
 const Recorder: React.FC<RecorderProps> = ({ onBack, onSaveSuccess, initialCourseName }) => {
   // 修改初始状态：默认为暂停，计时从 0 开始
   const [isRecording, setIsRecording] = useState(false);
   const [duration, setDuration] = useState(0);
   const [imageCount, setImageCount] = useState(0);
   const [noteText, setNoteText] = useState('');
+  
+  // 本地时间标记（录音过程中暂存）
+  const [localTimeMarks, setLocalTimeMarks] = useState<LocalTimeMark[]>([]);
+  const [showMarkModal, setShowMarkModal] = useState(false);
+  const [markContent, setMarkContent] = useState('');
+  const [markType, setMarkType] = useState<'EMPHASIS' | 'QUESTION' | 'NOTE'>('EMPHASIS');
 
   // API 数据
   const [courses, setCourses] = useState<Course[]>([]);
@@ -93,24 +107,38 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, onSaveSuccess, initialCours
   const [showChapterPicker, setShowChapterPicker] = useState(false);
   const [searchText, setSearchText] = useState('');
 
-  // 加载课程列表
+  // 加载课程列表（只显示本学期课程：学习中和复习中）
   const fetchCourses = useCallback(async () => {
     setCoursesLoading(true);
     try {
-      const response = await getCourseList();
-      if (response.success && response.data) {
-        setCourses(response.data);
+      // 并行获取学习中和复习中的课程
+      const [studyingRes, reviewingRes] = await Promise.all([
+        getCourseList({ status: 'STUDYING' }),
+        getCourseList({ status: 'REVIEWING' })
+      ]);
+      
+      const studyingCourses = studyingRes.success && studyingRes.data ? studyingRes.data : [];
+      const reviewingCourses = reviewingRes.success && reviewingRes.data ? reviewingRes.data : [];
+      
+      // 合并课程列表
+      const activeCourses = [...studyingCourses, ...reviewingCourses];
+      
+      if (activeCourses.length > 0) {
+        setCourses(activeCourses);
         // 如果有初始课程名，找到对应的ID
         if (initialCourseName) {
-          const course = response.data.find(c => c.name === initialCourseName);
+          const course = activeCourses.find(c => c.name === initialCourseName);
           if (course) {
             setSelectedCourseId(course.id);
             setCourseName(course.name);
           }
-        } else if (response.data.length > 0) {
-          setSelectedCourseId(response.data[0].id);
-          setCourseName(response.data[0].name);
+        } else {
+          // 默认选择第一个进行中的课程
+          setSelectedCourseId(activeCourses[0].id);
+          setCourseName(activeCourses[0].name);
         }
+      } else {
+        setCourses([]);
       }
     } catch (err) {
       console.error('加载课程失败', err);
@@ -683,6 +711,35 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, onSaveSuccess, initialCours
         console.log('[Recorder] 学习记录保存成功，recordId:', recordId);
         console.log('[Recorder] 内容统计:', { audio: hasAudio, document: hasDocument, images: hasImages });
         
+        // 批量创建本地时间标记（必须在多模态分析之前完成，确保标记被保存）
+        console.log('[Recorder] 检查时间标记:', { recordId, marksCount: localTimeMarks.length, marks: localTimeMarks });
+        if (recordId && localTimeMarks.length > 0) {
+          try {
+            console.log('[Recorder] 开始批量创建时间标记:', localTimeMarks.length);
+            const timeMarksToCreate = localTimeMarks.map(mark => ({
+              type: mark.type,
+              timestamp: mark.timestamp,
+              content: mark.content,
+            }));
+            console.log('[Recorder] 准备发送的时间标记:', timeMarksToCreate);
+            
+            const marksRes = await batchCreateTimeMarks(recordId, timeMarksToCreate);
+            console.log('[Recorder] 批量创建时间标记响应:', marksRes);
+            if (marksRes.success) {
+              console.log('[Recorder] 时间标记创建成功，数量:', marksRes.data?.count);
+              // 标记创建成功后，等待一小段时间确保数据库写入完成
+              await new Promise(resolve => setTimeout(resolve, 500));
+            } else {
+              console.warn('[Recorder] 时间标记创建失败:', marksRes.error);
+            }
+          } catch (markErr) {
+            console.error('[Recorder] 批量创建时间标记异常:', markErr);
+          }
+        } else {
+          console.log('[Recorder] 跳过创建时间标记:', { hasRecordId: !!recordId, marksLength: localTimeMarks.length });
+        }
+        
+        // 多模态分析（在标记创建完成后执行）
         if (recordId && (hasAudio || hasDocument || hasImages)) {
           try {
             console.log('[Recorder] 开始多模态分析，学习记录ID:', recordId);
@@ -719,6 +776,7 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, onSaveSuccess, initialCours
         setHasPDF(false);
         setUploadedDocument(null);
         setUploadedImages([]);
+        setLocalTimeMarks([]); // 清空本地标记
         // Navigate to TimeMachine or back after short delay
         setTimeout(() => {
           if (onSaveSuccess && response.data?.id) {
@@ -735,6 +793,41 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, onSaveSuccess, initialCours
     } finally {
       setLoading(false);
     }
+  };
+
+  // 处理旗子按钮点击 - 添加时间标记
+  const handleFlagClick = () => {
+    if (!isRecording) {
+      // 未录音时提示
+      return;
+    }
+    setMarkContent('');
+    setMarkType('EMPHASIS');
+    setShowMarkModal(true);
+  };
+
+  // 确认添加标记
+  const confirmAddMark = () => {
+    const newMark: LocalTimeMark = {
+      id: `local-${Date.now()}`,
+      timestamp: duration * 1000, // 转换为毫秒
+      type: markType,
+      content: markContent.trim() || undefined,
+    };
+    setLocalTimeMarks(prev => [...prev, newMark]);
+    setShowMarkModal(false);
+    setMarkContent('');
+  };
+
+  // 取消添加标记
+  const cancelAddMark = () => {
+    setShowMarkModal(false);
+    setMarkContent('');
+  };
+
+  // 删除本地标记
+  const removeLocalMark = (id: string) => {
+    setLocalTimeMarks(prev => prev.filter(m => m.id !== id));
   };
 
   // Start Recording
@@ -1320,8 +1413,99 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, onSaveSuccess, initialCours
           </div>
       )}
 
+      {/* 标记弹窗 */}
+      {showMarkModal && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center">
+          <div 
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm" 
+            onClick={cancelAddMark}
+          />
+          <div className="bg-white w-full max-w-md rounded-t-[32px] p-6 z-[110] shadow-2xl animate-in slide-in-from-bottom">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-black text-slate-800">添加标记</h3>
+              <button onClick={cancelAddMark} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200">
+                <X size={20} />
+              </button>
+            </div>
+            
+            {/* 标记类型选择 */}
+            <div className="mb-4">
+              <p className="text-sm font-bold text-slate-600 mb-3">标记类型</p>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setMarkType('EMPHASIS')}
+                  className={`flex-1 py-3 rounded-xl font-medium text-sm transition-all ${
+                    markType === 'EMPHASIS'
+                      ? 'bg-yellow-100 text-yellow-700 border-2 border-yellow-300'
+                      : 'bg-slate-50 text-slate-600 border-2 border-transparent'
+                  }`}
+                >
+                  <span className="mr-1">⭐</span> 重点
+                </button>
+                <button
+                  onClick={() => setMarkType('QUESTION')}
+                  className={`flex-1 py-3 rounded-xl font-medium text-sm transition-all ${
+                    markType === 'QUESTION'
+                      ? 'bg-purple-100 text-purple-700 border-2 border-purple-300'
+                      : 'bg-slate-50 text-slate-600 border-2 border-transparent'
+                  }`}
+                >
+                  <span className="mr-1">❓</span> 疑问
+                </button>
+                <button
+                  onClick={() => setMarkType('NOTE')}
+                  className={`flex-1 py-3 rounded-xl font-medium text-sm transition-all ${
+                    markType === 'NOTE'
+                      ? 'bg-blue-100 text-blue-700 border-2 border-blue-300'
+                      : 'bg-slate-50 text-slate-600 border-2 border-transparent'
+                  }`}
+                >
+                  <span className="mr-1">📝</span> 笔记
+                </button>
+              </div>
+            </div>
+
+            {/* 当前时间显示 */}
+            <div className="mb-4 p-3 bg-slate-50 rounded-xl">
+              <p className="text-xs text-slate-400 mb-1">标记时间</p>
+              <p className="text-lg font-black text-slate-800">
+                {Math.floor(duration / 60).toString().padStart(2, '0')}:
+                {(duration % 60).toString().padStart(2, '0')}
+              </p>
+            </div>
+
+            {/* 备注输入 */}
+            <div className="mb-6">
+              <p className="text-sm font-bold text-slate-600 mb-3">备注（可选）</p>
+              <textarea
+                value={markContent}
+                onChange={(e) => setMarkContent(e.target.value)}
+                placeholder="输入标记内容..."
+                className="w-full h-24 p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 placeholder:text-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              />
+            </div>
+
+            {/* 按钮 */}
+            <div className="flex space-x-3">
+              <button
+                onClick={cancelAddMark}
+                className="flex-1 px-4 py-3 border border-slate-200 rounded-xl text-slate-600 font-medium hover:bg-slate-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmAddMark}
+                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700"
+              >
+                添加标记
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 【2】课程信息区 - 可点击切换 */}
-      <div className="px-6 mb-3 z-10">
+      <div className="px-6 mb-3 z-10 flex-shrink-0">
         {/* 课程选择 */}
         <div
           className="flex items-center cursor-pointer active:opacity-70 transition-opacity group"
@@ -1364,7 +1548,10 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, onSaveSuccess, initialCours
         )}
       </div>
 
-      {/* 【3】AI 语音采集区 */}
+      {/* 【3】中间可滚动内容区 */}
+      <div className="flex-1 overflow-y-auto z-10 pb-44">
+
+      {/* 【3.1】AI 语音采集区 */}
       <div className="px-6 mb-3 z-10">
         <div className="bg-white border border-slate-100 rounded-[28px] p-4 relative overflow-hidden shadow-sm">
             <div className="flex justify-between items-center mb-4">
@@ -1492,6 +1679,60 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, onSaveSuccess, initialCours
         </div>
       </div>
 
+      {/* 【3.5】实时标记列表 - 当有标记时显示 */}
+      {localTimeMarks.length > 0 && (
+        <div className="px-6 mb-3 z-10">
+          <div className="bg-white border border-slate-100 rounded-[20px] p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center space-x-2">
+                <Flag size={14} className="text-blue-500" />
+                <h3 className="text-sm font-bold text-slate-700">实时标记</h3>
+                <span className="text-xs text-slate-400">({localTimeMarks.length})</span>
+              </div>
+              <button
+                onClick={() => setLocalTimeMarks([])}
+                className="text-xs text-red-500 hover:text-red-600"
+              >
+                清空
+              </button>
+            </div>
+            <div className="space-y-2 max-h-32 overflow-y-auto">
+              {localTimeMarks.map((mark) => (
+                <div
+                  key={mark.id}
+                  className={`flex items-center justify-between p-2 rounded-xl ${
+                    mark.type === 'EMPHASIS'
+                      ? 'bg-yellow-50 border border-yellow-100'
+                      : mark.type === 'QUESTION'
+                      ? 'bg-purple-50 border border-purple-100'
+                      : 'bg-blue-50 border border-blue-100'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2 flex-1 min-w-0">
+                    <span className="text-xs">
+                      {mark.type === 'EMPHASIS' ? '⭐' : mark.type === 'QUESTION' ? '❓' : '📝'}
+                    </span>
+                    <span className="text-xs font-medium text-slate-600">
+                      {Math.floor(mark.timestamp / 60000).toString().padStart(2, '0')}:
+                      {Math.floor((mark.timestamp % 60000) / 1000).toString().padStart(2, '0')}
+                    </span>
+                    {mark.content && (
+                      <span className="text-xs text-slate-500 truncate flex-1">{mark.content}</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => removeLocalMark(mark.id)}
+                    className="ml-2 p-1 text-slate-400 hover:text-red-500 transition-colors"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 【4】随心记区域 - 拉长高度至 h-60 (约 240px) */}
       <div className="px-6 mb-3 z-10 h-60 flex flex-col">
         <div className="bg-white border border-slate-100 rounded-[28px] p-5 flex-1 flex flex-col shadow-sm">
@@ -1610,10 +1851,13 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, onSaveSuccess, initialCours
         </div>
       </div>
 
+      {/* 中间可滚动内容区结束 */}
+      </div>
+
       {/* 【6】底部主操作区 */}
-      <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-[#F7F9FC] via-[#F7F9FC]/95 to-transparent z-20 px-10 flex flex-col items-center justify-end pb-8">
+      <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-[#F7F9FC] via-[#F7F9FC]/95 to-transparent z-20 px-10 flex flex-col items-center justify-end pb-8 pointer-events-none">
         
-        <div className="flex items-end justify-between w-full max-w-sm">
+        <div className="flex items-end justify-between w-full max-w-sm pointer-events-auto">
             {/* 上传按钮 */}
             <button
               onClick={triggerFileUpload}
@@ -1659,8 +1903,21 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, onSaveSuccess, initialCours
       </div>
 
       {/* 侧边快捷标记 */}
-      <button className="absolute right-4 top-[45%] -translate-y-1/2 z-20 w-11 h-11 bg-white border border-slate-100 rounded-full shadow-lg flex items-center justify-center text-slate-400 active:bg-blue-50 active:text-blue-600 transition-all">
+      <button 
+        onClick={handleFlagClick}
+        className={`absolute right-4 top-[45%] -translate-y-1/2 z-20 w-11 h-11 bg-white border border-slate-100 rounded-full shadow-lg flex items-center justify-center transition-all ${
+          isRecording 
+            ? 'text-blue-500 hover:bg-blue-50 active:scale-95' 
+            : 'text-slate-300 cursor-not-allowed'
+        }`}
+        disabled={!isRecording}
+      >
         <Flag size={18} />
+        {localTimeMarks.length > 0 && (
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+            {localTimeMarks.length}
+          </span>
+        )}
       </button>
 
       {/* 【7】课程选择 Picker (Bottom Sheet) */}
@@ -1704,6 +1961,16 @@ const Recorder: React.FC<RecorderProps> = ({ onBack, onSaveSuccess, initialCours
                              </div>
                              <Check size={18} className="text-blue-600" />
                          </button>
+                     )}
+
+                     {filteredCourses.length === 0 && !searchText && (
+                         <div className="flex flex-col items-center justify-center py-12 text-center">
+                             <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                                 <BookOpen size={28} className="text-slate-400" />
+                             </div>
+                             <p className="text-sm font-bold text-slate-600 mb-1">暂无本学期课程</p>
+                             <p className="text-xs text-slate-400">请先添加学习中的课程</p>
+                         </div>
                      )}
 
                      {filteredCourses.map(course => {

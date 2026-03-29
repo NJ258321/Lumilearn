@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { Search, MoreHorizontal, ChevronUp, ChevronDown, Plus, Edit2, RefreshCw, Info, Trash2, X, Archive, BookOpen, Clock, CalendarRange, Network, Layers, Zap, Book, Loader2, Edit3 } from 'lucide-react';
 import * as d3 from 'd3';
-import { AppView, Course } from '../types';
+import { AppView, Course, CourseType } from '../types';
 import { getCourseList } from '../src/api/courses';
 
 interface CoursesProps {
@@ -62,7 +62,7 @@ const CONFIG = {
 
     // Force Graph Constants 
     // 修改前: FORCE_CENTER_Y: 200,
-    FORCE_CENTER_Y: 210,  // 400
+    FORCE_CENTER_Y: 150,  // 上移避免与时间轴重叠
     FORCE_CENTER_X: 165, 
 };
 
@@ -142,21 +142,28 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
         
         const typeNodes: VisualNode[] = [];
         
+        // 类型配置映射
+        const typeConfig: Record<CourseType, { label: string; color: string; shortLabel: string }> = {
+            PROFESSIONAL: { label: '专业课', color: '#3B82F6', shortLabel: 'Major' },
+            ELECTIVE: { label: '选修课', color: '#10B981', shortLabel: 'Elective' },
+            CROSS_MAJOR: { label: '跨专业', color: '#F59E0B', shortLabel: 'Cross' }
+        };
+
         types.forEach(type => {
             const typeCourses = semCourses.filter(c => c.type === type);
             const typeHeight = typeCourses.length * CONFIG.MICRO_GAP_Y;
             const typeCenterY = currentY + (typeHeight / 2) - (CONFIG.MICRO_GAP_Y / 2);
             
-            const typeColor = type === 'major' ? '#3B82F6' : '#10B981';
+            const config = typeConfig[type as CourseType] || typeConfig.ELECTIVE;
 
             const typeNode: VisualNode = {
                 id: `type-${sem}-${type}`,
                 type: 'category',
-                title: type === 'major' ? '专业必修' : '通识选修',
+                title: config.label,
                 x: CONFIG.LEVEL_X_OFFSET[1],
                 y: typeCenterY,
-                data: { label: type === 'major' ? 'Major' : 'Elective' },
-                color: typeColor
+                data: { label: config.shortLabel },
+                color: config.color
             };
             nodes.push(typeNode);
             typeNodes.push(typeNode);
@@ -172,7 +179,7 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
                     statusColor: course.status === 'reviewing' ? '#EF4444' : (course.status === 'studying' ? '#3B82F6' : '#94A3B8')
                 };
                 nodes.push(courseNode);
-                links.push({ source: typeNode, target: courseNode, color: typeColor });
+                links.push({ source: typeNode, target: courseNode, color: config.color });
                 
                 currentY += CONFIG.MICRO_GAP_Y;
             });
@@ -206,69 +213,156 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
   }, [courses]);
 
   // ---------------------------------------------------------------------------
-  // 2. FORCE DIRECTED GRAPH ENGINE (Updated for Mobile Light Theme)
+  // 2. FORCE DIRECTED GRAPH ENGINE - 基于课程数据自动生成
   // ---------------------------------------------------------------------------
+  
+  // 课程分组映射配置
+  const COURSE_GROUP_MAP: Record<string, NodeType> = {
+    // 数学类 - 左侧
+    '高等数学（上）': 'math',
+    '高等数学（下）': 'math',
+    '线性代数': 'math',
+    '概率论与数理统计': 'math',
+    // 计算机技术类 - 右侧
+    'C语言程序设计': 'tech',
+    '数据结构': 'tech',
+    '面向对象程序设计': 'tech',
+    '计算机组成原理': 'tech',
+    '数据库原理': 'tech',
+    // 专业核心类 - 中心
+    '地理信息系统原理': 'core',
+    '遥感原理与应用': 'core',
+    '摄影测量学': 'core',
+    // 其他类
+    '大学英语（一）': 'other',
+    '大学英语（二）': 'other',
+    '中国近现代史纲要': 'other',
+    '思想道德与法治': 'other',
+    '大学物理': 'other',
+  };
+
+  // 预定义的先修关系（强关系 - 实线）
+  const PREREQUISITE_MAP: Record<string, string[]> = {
+    '高等数学（下）': ['高等数学（上）'],
+    '线性代数': ['高等数学（上）'],
+    '概率论与数理统计': ['高等数学（下）', '线性代数'],
+    '数据结构': ['C语言程序设计'],
+    '面向对象程序设计': ['C语言程序设计'],
+    '计算机组成原理': ['数据结构'],
+    '数据库原理': ['数据结构'],
+    '遥感原理与应用': ['地理信息系统原理', '线性代数'],
+    '摄影测量学': ['遥感原理与应用', '高等数学（下）'],
+    '大学英语（二）': ['大学英语（一）'],
+  };
+
+  // 根据课程数据生成知识图谱
   useEffect(() => {
-    // 1. Nodes Definition with Groups
-    // SCALING: Reduced radius (r) to fit mobile
-    const nodes: ForceNode[] = [
-        // Core (Center, Largest)
-        { id: 'c4', name: '遥感原理与应用', group: 'core', status: 'studying', r: 42, fx: CONFIG.FORCE_CENTER_X, fy: CONFIG.FORCE_CENTER_Y }, // Anchored Center
-        { id: 'c_photo', name: '摄影测量学', group: 'core', status: 'reviewing', r: 38 },
+    if (courses.length === 0) return;
 
-        // Math (Left, Medium - Reduced r)
-        { id: 'c2', name: '高等数学', group: 'math', status: 'reviewing', r: 28 },
-        { id: 'c8', name: '线性代数', group: 'math', status: 'archived', r: 24 },
+    // 1. 生成节点
+    const nodes: ForceNode[] = courses.map((course, index) => {
+      // 确定分组
+      const group = COURSE_GROUP_MAP[course.name] || 'other';
+      
+      // 根据状态确定节点大小
+      const baseRadius = group === 'core' ? 36 : (group === 'math' || group === 'tech' ? 26 : 20);
+      const r = baseRadius;
+      
+      // 状态映射（后端大写 -> 前端小写）
+      const statusMap: Record<string, CourseStatus> = {
+        'STUDYING': 'studying',
+        'REVIEWING': 'reviewing',
+        'ARCHIVED': 'archived'
+      };
+      const status = statusMap[course.status] || 'studying';
 
-        // Tech (Right, Medium - Reduced r)
-        { id: 'c1', name: '数据结构', group: 'tech', status: 'reviewing', r: 28 },
-        { id: 'c6', name: 'C语言', group: 'tech', status: 'archived', r: 24 }, // Shortened name for display
+      // 专业核心课程固定在中心
+      const isCore = group === 'core';
+      
+      return {
+        id: course.id,
+        name: course.name,
+        group,
+        status,
+        r,
+        // 核心课程固定在中心位置
+        ...(isCore && index === courses.findIndex(c => COURSE_GROUP_MAP[c.name] === 'core') ? {
+          fx: CONFIG.FORCE_CENTER_X,
+          fy: CONFIG.FORCE_CENTER_Y
+        } : {})
+      };
+    });
 
-        // Other (Side/Bottom, Smallest)
-        { id: 'c5', name: '近代史', group: 'other', status: 'studying', r: 18 },
-        { id: 'c7', name: '思修', group: 'other', status: 'archived', r: 18 },
-    ];
+    // 2. 生成连线
+    const links: ForceLink[] = [];
+    
+    // A. 先修关系（强关系 - 实线）
+    courses.forEach(targetCourse => {
+      const prerequisites = PREREQUISITE_MAP[targetCourse.name];
+      if (prerequisites) {
+        prerequisites.forEach(prereqName => {
+          const sourceCourse = courses.find(c => c.name === prereqName);
+          if (sourceCourse) {
+            links.push({
+              source: sourceCourse.id,
+              target: targetCourse.id,
+              type: 'prerequisite'
+            });
+          }
+        });
+      }
+    });
 
-    // 2. Links Definition (Strict Relationships)
-    const links: ForceLink[] = [
-        // Prerequisite (Solid) - Math
-        { source: 'c2', target: 'c8', type: 'prerequisite' }, // Math -> LinAlg
-        { source: 'c8', target: 'c_photo', type: 'prerequisite' }, // LinAlg -> Photo
-        { source: 'c2', target: 'c_photo', type: 'prerequisite' }, // Math -> Photo
-        { source: 'c2', target: 'c4', type: 'prerequisite' }, // Math -> RS
+    // B. 同类型课程之间的弱关系（虚线）- 排除"other"组
+    const coursesByGroup: Record<string, Course[]> = {};
+    courses.forEach(course => {
+      const group = COURSE_GROUP_MAP[course.name] || 'other';
+      if (!coursesByGroup[group]) coursesByGroup[group] = [];
+      coursesByGroup[group].push(course);
+    });
 
-        // Method Support (Dashed) - Tech
-        { source: 'c6', target: 'c1', type: 'method-support' }, // C -> DataStruct
-        { source: 'c1', target: 'c4', type: 'method-support' }, // DataStruct -> RS
-        { source: 'c1', target: 'c_photo', type: 'method-support' }, // DataStruct -> Photo
+    Object.entries(coursesByGroup).forEach(([group, groupCourses]) => {
+      // 只给 math/tech/core 组生成弱关系，other组（思政/英语等）不生成
+      if (group !== 'other' && groupCourses.length >= 2) {
+        // 将同组课程连成链
+        for (let i = 0; i < groupCourses.length - 1; i++) {
+          const existingLink = links.find(l => 
+            (l.source === groupCourses[i].id && l.target === groupCourses[i + 1].id) ||
+            (l.source === groupCourses[i + 1].id && l.target === groupCourses[i].id)
+          );
+          if (!existingLink) {
+            links.push({
+              source: groupCourses[i].id,
+              target: groupCourses[i + 1].id,
+              type: 'method-support'
+            });
+          }
+        }
+      }
+    });
 
-        // Application (Dotted) - Core Interaction
-        { source: 'c_photo', target: 'c4', type: 'application' }, // Photo <-> RS
-    ];
-
-    // 3. Force Simulation with TIGHTER Layout
+    // 3. 力导向图模拟 - 优化布局
     const simulation = d3.forceSimulation(nodes as any)
-        .force("link", d3.forceLink(links).id((d: any) => d.id).distance((d) => {
-            // Reduced distances for mobile compactness
-            if (d.type === 'application') return 90;
-            return 100; 
+        .force("link", d3.forceLink(links).id((d: any) => d.id).distance((d: any) => {
+            // 先修关系更紧密，同组关系稍远
+            if (d.type === 'prerequisite') return 75;  // 先修关系更近
+            if (d.type === 'method-support') return 90;
+            return 85; 
         }))
-        .force("charge", d3.forceManyBody().strength(-200)) // Reduced repulsion
-        .force("collide", d3.forceCollide().radius((d: any) => d.r * 1.2)) 
-        // Custom Forces to Enforce TIGHT Layout
+        .force("charge", d3.forceManyBody().strength(-300))  // 加强排斥力防止重叠
+        .force("collide", d3.forceCollide().radius((d: any) => d.r * 1.5).strength(0.8))
+        // 分组力 - 控制水平位置，更紧凑
         .force("x", d3.forceX((d: any) => {
-            // Much smaller offsets to fit ~375px width
-            if (d.group === 'math') return CONFIG.FORCE_CENTER_X - 110; // Left
-            if (d.group === 'tech') return CONFIG.FORCE_CENTER_X + 110; // Right
-            if (d.group === 'other') return CONFIG.FORCE_CENTER_X + 120; // Move closer to right edge
-            return CONFIG.FORCE_CENTER_X; // Core stays center
-        }).strength(0.8)) // Stronger pull to keep them in columns
+            if (d.group === 'math') return CONFIG.FORCE_CENTER_X - 85;  // 数学组偏左
+            if (d.group === 'tech') return CONFIG.FORCE_CENTER_X + 85;  // 技术组偏右
+            if (d.group === 'other') return CONFIG.FORCE_CENTER_X + 100; // 其他组右下
+            return CONFIG.FORCE_CENTER_X;  // 核心居中
+        }).strength(0.8))
+        // 垂直位置
         .force("y", d3.forceY((d: any) => {
-            // MOVED UP from +75 to +50 to raise the "other" group
-            if (d.group === 'other') return CONFIG.FORCE_CENTER_Y + 50; 
-            if (d.id === 'c_photo') return CONFIG.FORCE_CENTER_Y - 90; // Photo above RS
+            if (d.group === 'other') return CONFIG.FORCE_CENTER_Y + 60;
             return CONFIG.FORCE_CENTER_Y;
-        }).strength(0.5))
+        }).strength(0.4))
         .stop();
 
     // Warm up simulation
@@ -276,14 +370,43 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
 
     setForceNodes(nodes);
     setForceLinks(links);
-  }, []);
+  }, [courses]);
 
   // --- View Control ---
-  const handleResetView = () => {
-      // Logic: If panel is open, show graph partially? No, defaults to graph at top.
-      // We set a default transform that frames the top graph nicely.
-      setTransform({ x: 0, y: 0, scale: 1 });
-  };
+  const handleResetView = useCallback(() => {
+      if (timelineNodes.length === 0 || !containerRef.current) {
+          setTransform({ x: 0, y: 0, scale: 1 });
+          return;
+      }
+
+      // 计算时间轴节点的边界框
+      const xs = timelineNodes.map(n => n.x);
+      const ys = timelineNodes.map(n => n.y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      
+      const nodeWidth = maxX - minX + 250; // 加上课程卡片宽度
+      const nodeHeight = maxY - minY + 100;
+      
+      const containerWidth = containerRef.current.clientWidth;
+      const containerHeight = containerRef.current.clientHeight;
+      
+      // 计算合适的缩放比例
+      const scaleX = containerWidth / nodeWidth;
+      const scaleY = containerHeight / nodeHeight;
+      const scale = Math.min(Math.min(scaleX, scaleY) * 0.85, 1); // 留一些边距，最大缩放为1
+      
+      // 计算居中位置
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      
+      const x = containerWidth / 2 - centerX * scale;
+      const y = containerHeight / 2 - centerY * scale;
+      
+      setTransform({ x, y, scale });
+  }, [timelineNodes]);
 
   const handleShowGraph = () => {
       if (containerRef.current) {
@@ -297,7 +420,7 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
           handleResetView();
           setHasAutoFit(true);
       }
-  }, [timelineNodes.length, hasAutoFit]);
+  }, [timelineNodes.length, hasAutoFit, handleResetView]);
 
 
   // --- Interaction Logic ---
@@ -321,26 +444,39 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
   };
 
   const handleWheel = (e: React.WheelEvent) => {
-      if (e.ctrlKey) {
-          e.preventDefault();
-          const zoomSensitivity = 0.002;
-          const newScale = Math.min(Math.max(0.4, transform.scale - e.deltaY * zoomSensitivity), 2.0);
-          setTransform(prev => ({ ...prev, scale: newScale }));
-      }
+      const zoomSensitivity = 0.001;
+      const newScale = Math.min(Math.max(0.4, transform.scale - e.deltaY * zoomSensitivity), 2.0);
+      setTransform(prev => ({ ...prev, scale: newScale }));
   };
 
   // --- Helpers ---
+  // DOM 节点尺寸（用于连线计算）
+  const NODE_SIZES = {
+    semester: { w: 120, h: 40 },
+    category: { w: 90, h: 32 },
+    course: { w: 200, h: 40 }
+  };
+
   const getBezierPath = (link: VisualLink) => {
-    let srcX = link.source.x;
-    let tgtX = link.target.x;
-    if (link.source.type === 'semester') srcX += 80; 
-    else if (link.source.type === 'category') srcX += 55;
-    if (link.target.type === 'category') tgtX -= 55; 
-    else if (link.target.type === 'course') tgtX -= 100;
+    // DOM 节点使用 transform -translate-x-1/2 -translate-y-1/2 居中
+    // 所以 node.x, node.y 是节点中心坐标
+    const srcX = link.source.x;
     const srcY = link.source.y;
+    const tgtX = link.target.x;
     const tgtY = link.target.y;
-    const midX = (srcX + tgtX) / 2;
-    return `M ${srcX} ${srcY} C ${midX} ${srcY}, ${midX} ${tgtY}, ${tgtX} ${tgtY}`;
+    
+    // 连线起点：源节点右边缘
+    let startX = srcX;
+    if (link.source.type === 'semester') startX += NODE_SIZES.semester.w / 2;
+    else if (link.source.type === 'category') startX += NODE_SIZES.category.w / 2;
+    
+    // 连线终点：目标节点左边缘  
+    let endX = tgtX;
+    if (link.target.type === 'category') endX -= NODE_SIZES.category.w / 2;
+    else if (link.target.type === 'course') endX -= NODE_SIZES.course.w / 2;
+    
+    const midX = (startX + endX) / 2;
+    return `M ${startX} ${srcY} C ${midX} ${srcY}, ${midX} ${tgtY}, ${endX} ${tgtY}`;
   };
 
   // --- Colors & Styles ---
@@ -361,7 +497,8 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
            ======================================================================== */}
         <div 
             ref={containerRef}
-            className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing touch-none z-0 bg-gradient-to-b from-slate-50 to-[#F1F5F9]" 
+            className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing touch-none z-0 bg-gradient-to-b from-slate-50 to-[#F1F5F9]"
+            style={{ touchAction: 'none' }} 
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -384,7 +521,11 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
                     transition: isDragging ? 'none' : 'transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)' 
                 }}
             >
-                <svg className="absolute top-[-5000px] left-[-5000px] w-[10000px] h-[10000px] overflow-visible pointer-events-none">
+                <svg 
+                    className="absolute top-0 left-0 overflow-visible pointer-events-none"
+                    style={{ width: '100%', height: '100%' }}
+                    preserveAspectRatio="xMidYMid slice"
+                >
                      <defs>
                         {/* Soft Shadow Filter for Light Theme */}
                         <filter id="shadow-light" x="-50%" y="-50%" width="200%" height="200%">
@@ -405,53 +546,92 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
                             <stop offset="100%" stopColor="#F1F5F9" />
                         </linearGradient>
 
-                        {/* Arrow Marker */}
-                        <marker id="arrow" markerWidth="8" markerHeight="8" refX="22" refY="3" orient="auto" markerUnits="strokeWidth">
-                          <path d="M0,0 L0,6 L9,3 z" fill="#CBD5E1" />
+                        {/* Arrow Markers for different link types */}
+                        <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="20" refY="3" orient="auto" markerUnits="strokeWidth">
+                          <path d="M0,0 L0,6 L9,3 z" fill="#3B82F6" />
+                        </marker>
+                        <marker id="arrow-orange" markerWidth="10" markerHeight="10" refX="20" refY="3" orient="auto" markerUnits="strokeWidth">
+                          <path d="M0,0 L0,6 L9,3 z" fill="#F59E0B" />
+                        </marker>
+                        <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="20" refY="3" orient="auto" markerUnits="strokeWidth">
+                          <path d="M0,0 L0,6 L9,3 z" fill="#10B981" />
                         </marker>
                      </defs>
 
-                     <g transform="translate(5000, 5000)">
+                     <g>
+                        {/* SVG 与 DOM 使用相同坐标系 - 原点 (0,0) 对齐 */}
                         
                         {/* --- PART A: FORCE GRAPH (Relationship) --- */}
                         <g className="force-layer">
                              
-                             {/* Graph Title - Moved Up */}
+                             {/* Graph Title - 上移避免重叠 */}
                              <text 
-                                x={CONFIG.FORCE_CENTER_X + 150}  // 向右移动20像素
-                                y={CONFIG.FORCE_CENTER_Y - 130} // 向上移动20像素
+                                x={CONFIG.FORCE_CENTER_X}
+                                y={CONFIG.FORCE_CENTER_Y - 160}
                                 textAnchor="middle" 
                                 className="fill-slate-400 font-bold text-xs uppercase tracking-[0.2em]"
                              >
                                  Knowledge Graph
                              </text>
+                             
+                             {/* Legend - 图例说明 往左移 */}
+                             <g transform={`translate(${CONFIG.FORCE_CENTER_X - 100}, ${CONFIG.FORCE_CENTER_Y + 130})`}>
+                                <text x="0" y="0" className="fill-slate-400 text-[8px]" textAnchor="middle">关系说明</text>
+                                <line x1="-50" y1="10" x2="-30" y2="10" stroke="#3B82F6" strokeWidth="2" markerEnd="url(#arrow-blue)"/>
+                                <text x="-25" y="13" className="fill-slate-400 text-[7px]">先修</text>
+                                <line x1="-5" y1="10" x2="15" y2="10" stroke="#F59E0B" strokeWidth="1.5" strokeDasharray="4,4"/>
+                                <text x="20" y="13" className="fill-slate-400 text-[7px]">支撑</text>
+                             </g>
 
-                             {/* Links */}
+                             {/* Links - 优化后的连线 */}
                              {forceLinks.map((link, i) => {
                                  const source = link.source as ForceNode;
                                  const target = link.target as ForceNode;
                                  
-                                 // Line Styles
-                                 const strokeDashArray = link.type === 'method-support' ? '4,4' : (link.type === 'application' ? '1,3' : 'none');
-                                 const strokeWidth = link.type === 'prerequisite' ? 2 : 1.5;
-                                 const isBiDirectional = link.type === 'application';
+                                 // 根据关系类型设置不同样式
+                                 const linkStyles = {
+                                     'prerequisite': { 
+                                         color: '#3B82F6',  // 蓝色 - 先修
+                                         dash: 'none', 
+                                         width: 2,
+                                         marker: 'url(#arrow-blue)',
+                                         label: '先修'
+                                     },
+                                     'method-support': { 
+                                         color: '#F59E0B',  // 橙色 - 方法支持
+                                         dash: '5,5', 
+                                         width: 1.5,
+                                         marker: 'url(#arrow-orange)',
+                                         label: '支撑'
+                                     },
+                                     'application': { 
+                                         color: '#10B981',  // 绿色 - 应用
+                                         dash: '2,3', 
+                                         width: 1.5,
+                                         marker: '',
+                                         label: '应用'
+                                     }
+                                 };
+                                 const style = linkStyles[link.type] || linkStyles['prerequisite'];
+                                 const isHovered = hoveredNode === (link.source as ForceNode).id || hoveredNode === (link.target as ForceNode).id;
 
                                  return (
                                      <g key={`fl-${i}`}>
                                         <line 
                                             x1={source.x} y1={source.y}
                                             x2={target.x} y2={target.y}
-                                            stroke="#94A3B8"
-                                            strokeWidth={strokeWidth}
-                                            strokeDasharray={strokeDashArray}
-                                            opacity={0.4}
-                                            markerEnd={!isBiDirectional ? "url(#arrow)" : ""}
+                                            stroke={style.color}
+                                            strokeWidth={isHovered ? style.width + 1 : style.width}
+                                            strokeDasharray={style.dash}
+                                            opacity={isHovered ? 0.8 : 0.5}
+                                            markerEnd={style.marker}
+                                            className="transition-all duration-300"
                                         />
                                      </g>
                                  );
                              })}
 
-                             {/* Nodes */}
+                             {/* Nodes - 优化后的节点 */}
                              {forceNodes.map((node, i) => {
                                  const fillId = node.status === 'studying' ? 'url(#grad-blue-light)' : (node.status === 'reviewing' ? 'url(#grad-green-light)' : 'url(#grad-gray-light)');
                                  const strokeColor = getStatusColor(node.status);
@@ -460,25 +640,45 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
 
                                  // Font Size Logic based on node size
                                  const fontSize = node.r < 30 ? 8 : 10;
+                                 
+                                 // 分组颜色
+                                 const groupColors = {
+                                     'core': '#3B82F6',
+                                     'math': '#8B5CF6', 
+                                     'tech': '#F59E0B',
+                                     'other': '#94A3B8'
+                                 };
+                                 const groupColor = groupColors[node.group] || '#94A3B8';
 
                                  return (
                                      <g 
                                         key={`fn-${node.id}`} 
                                         transform={`translate(${node.x},${node.y})`}
-                                        className="transition-transform duration-300"
+                                        className="transition-all duration-300"
                                         style={{ pointerEvents: 'auto', cursor: 'pointer' }}
                                         onPointerDown={(e) => e.stopPropagation()} 
                                         onClick={() => onCourseSelect ? onCourseSelect(node.id, node.status === 'studying' ? 'study' : 'review') : onNavigate(AppView.COURSE_DETAIL_STUDY, node.id)}
                                         onMouseEnter={() => setHoveredNode(node.id)}
                                         onMouseLeave={() => setHoveredNode(null)}
                                      >
+                                         {/* Outer Glow Ring - 外发光 */}
+                                         {isHovered && (
+                                            <circle r={node.r * 1.5} fill={groupColor} opacity="0.15">
+                                                <animate attributeName="r" values={`${node.r * 1.3};${node.r * 1.6};${node.r * 1.3}`} dur="1.5s" repeatCount="indefinite" />
+                                                <animate attributeName="opacity" values="0.1;0.2;0.1" dur="1.5s" repeatCount="indefinite" />
+                                            </circle>
+                                         )}
+                                         
                                          {/* Breathing Ring */}
-                                         {isBreathing && (
+                                         {isBreathing && !isHovered && (
                                             <circle r={node.r * 1.3} fill={strokeColor} opacity="0.1">
                                                 <animate attributeName="r" values={`${node.r * 1.1};${node.r * 1.3};${node.r * 1.1}`} dur="4s" repeatCount="indefinite" />
                                                 <animate attributeName="opacity" values="0.05;0.15;0.05" dur="4s" repeatCount="indefinite" />
                                             </circle>
                                          )}
+                                         
+                                         {/* Group Ring - 分组标识环 */}
+                                         <circle r={node.r + 3} fill="none" stroke={groupColor} strokeWidth="1.5" opacity={isHovered ? 0.8 : 0.3} />
 
                                          {/* Main Circle */}
                                          <circle 
@@ -511,6 +711,7 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
 
                         {/* --- PART B: TIMELINE GRAPH (Pushed Down) --- */}
                         <g className="timeline-layer">
+
                             {timelineLinks.map((link, i) => (
                                 <g key={i}>
                                     <path 
@@ -527,11 +728,11 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
                     </g>
                 </svg>
 
-                {/* Timeline DOM Nodes - Kept as is */}
+                {/* Timeline DOM Nodes - 使用左上角定位，与 SVG 坐标系一致 */}
                 {timelineNodes.map(node => {
                     if (node.type === 'semester') {
                         return (
-                            <div key={node.id} className="absolute transform -translate-x-1/2 -translate-y-1/2" style={{ left: node.x, top: node.y }}>
+                            <div key={node.id} className="absolute" style={{ left: node.x - NODE_SIZES.semester.w/2, top: node.y - NODE_SIZES.semester.h/2 }}>
                                 <div className="bg-slate-800 text-white flex items-center space-x-2 px-4 py-2 rounded-xl shadow-lg border-2 border-white z-10">
                                     <CalendarRange size={14} className="text-slate-300" />
                                     <span className="text-sm font-bold whitespace-nowrap">{node.title}</span>
@@ -541,7 +742,7 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
                     }
                     if (node.type === 'category') {
                         return (
-                            <div key={node.id} className="absolute transform -translate-x-1/2 -translate-y-1/2" style={{ left: node.x, top: node.y }}>
+                            <div key={node.id} className="absolute" style={{ left: node.x - NODE_SIZES.category.w/2, top: node.y - NODE_SIZES.category.h/2 }}>
                                 <div 
                                     className="bg-white border-2 px-3 py-1.5 rounded-full shadow-sm whitespace-nowrap z-20 flex items-center justify-center min-w-[90px]" 
                                     style={{ borderColor: node.color, color: node.color }}
@@ -552,15 +753,16 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
                         );
                     }
                     if (node.type === 'course') {
-                        const isReviewing = node.data.status === 'reviewing';
-                        const isStudying = node.data.status === 'studying';
+                        const status = node.data.status?.toUpperCase?.() || node.data.status;
+                        const isReviewing = status === 'REVIEWING';
+                        const isStudying = status === 'STUDYING';
                         return (
                             <div 
                                 key={node.id}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={() => onCourseSelect ? onCourseSelect(node.data.id, node.data.status === 'studying' ? 'study' : 'review') : onNavigate(AppView.COURSE_DETAIL_STUDY, node.data.id)}
-                                className={`absolute transform -translate-x-1/2 -translate-y-1/2 bg-white w-[200px] h-[40px] rounded-lg shadow-sm border border-slate-100 flex items-center justify-between px-3 hover:scale-105 transition-all cursor-pointer group z-30 ${isReviewing ? 'ring-2 ring-red-50' : ''}`}
-                                style={{ left: node.x, top: node.y }}
+                                className={`absolute bg-white w-[200px] h-[40px] rounded-lg shadow-sm border border-slate-100 flex items-center justify-between px-3 hover:scale-105 transition-all cursor-pointer group z-30 ${isReviewing ? 'ring-2 ring-red-50' : ''}`}
+                                style={{ left: node.x - NODE_SIZES.course.w/2, top: node.y - NODE_SIZES.course.h/2 }}
                             >   
                                 <div className="flex-1 overflow-hidden mr-2">
                                     <div className="text-xs font-bold text-slate-700 truncate">{node.title}</div>
@@ -577,42 +779,7 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
                     return null;
                 })}
 
-                {/* --- MOVED HORIZONTAL LEGEND & DIVIDER INSIDE TRANSFORM --- */}
-                {!isPanelOpen && (
-                    <div 
-                        className="absolute transform -translate-x-1/2 -translate-y-1/2 z-0 pointer-events-none"
-                        style={{ left: CONFIG.FORCE_CENTER_X, top: 325 }}
-                    >
-                         <div className="bg-white/90 backdrop-blur-md border border-slate-200/60 px-4 py-2 rounded-full shadow-sm flex items-center space-x-4 pointer-events-auto">
-                             {/* Status Group */}
-                             <div className="flex items-center space-x-2">
-                                 <div className="flex items-center space-x-1">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.4)]"></div>
-                                    <span className="text-[8px] font-bold text-slate-600">Studying</span>
-                                 </div>
-                                 <div className="flex items-center space-x-1">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.4)]"></div>
-                                    <span className="text-[8px] font-bold text-slate-600">Reviewing</span>
-                                 </div>
-                             </div>
-                             
-                             {/* Divider */}
-                             <div className="w-[1px] h-2.5 bg-slate-300 opacity-50"></div>
-                
-                             {/* Relations Group */}
-                             <div className="flex items-center space-x-2">
-                                 <div className="flex items-center space-x-1">
-                                    <div className="w-3 h-0.5 bg-slate-400 rounded-full"></div>
-                                    <span className="text-[8px] font-bold text-slate-500">Theory</span>
-                                 </div>
-                                 <div className="flex items-center space-x-1">
-                                    <div className="w-3 h-0.5 border-t-2 border-dashed border-slate-400"></div>
-                                    <span className="text-[8px] font-bold text-slate-500">Method</span>
-                                 </div>
-                             </div>
-                        </div>
-                    </div>
-                )}
+
             </div>
         </div>
 
@@ -632,15 +799,28 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
                         </div>
                     </div>
                     
-                    <div className="flex space-x-4 overflow-x-auto px-6 pb-4 scrollbar-hide snap-x">
-                        {reviewingCourses.map(course => (
+                    <div className="flex space-x-4 overflow-x-auto px-6 pb-4 scrollbar-hide snap-x" style={{ WebkitOverflowScrolling: 'touch' }}>
+                        {reviewingCourses.length === 0 && (
+                            <div className="text-xs text-slate-400 py-4">暂无复习中课程</div>
+                        )}
+                        {reviewingCourses.map(course => {
+                            const typeConfig = {
+                                PROFESSIONAL: { label: '专业课', color: 'text-blue-600 bg-blue-50' },
+                                ELECTIVE: { label: '选修课', color: 'text-emerald-600 bg-emerald-50' },
+                                CROSS_MAJOR: { label: '公共课', color: 'text-amber-600 bg-amber-50' }
+                            };
+                            const typeInfo = typeConfig[course.type] || typeConfig.PROFESSIONAL;
+                            const updateDate = course.updatedAt 
+                                ? new Date(course.updatedAt).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) 
+                                : '未知';
+                            return (
                             <div 
                                 key={course.id}
                                 onClick={() => onCourseSelect ? onCourseSelect(course.id, 'review') : onNavigate(AppView.COURSE_DETAIL_STUDY, course.id)}
                                 className="snap-start flex-shrink-0 w-[150px] h-[90px] bg-white rounded-xl p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] border border-slate-100 relative active:scale-95 transition-transform flex flex-col justify-between group"
                             >
                                 <div className="flex justify-between items-start">
-                                    <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">专业课</span>
+                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${typeInfo.color}`}>{typeInfo.label}</span>
                                     <button onClick={(e) => { e.stopPropagation(); /* open menu */ }} className="text-slate-300 hover:text-slate-600 p-1 -mr-2 -mt-2 active:bg-slate-100 rounded-full">
                                         <MoreHorizontal size={14} />
                                     </button>
@@ -648,12 +828,13 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
                                 <div>
                                     <h3 className="text-xs font-bold text-slate-800 line-clamp-1">{course.name}</h3>
                                     <div className="flex justify-between items-end mt-1">
-                                        <p className="text-[9px] text-slate-400">01/25 更新</p>
+                                        <p className="text-[9px] text-slate-400">{updateDate} 更新</p>
                                         <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] animate-pulse"></div>
                                     </div>
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -664,15 +845,28 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
                         <span className="text-sm font-bold text-slate-800">学习中 (Studying)</span>
                     </div>
                     
-                    <div className="flex space-x-4 overflow-x-auto px-6 pb-2 scrollbar-hide snap-x">
-                        {studyingCourses.map(course => (
+                    <div className="flex space-x-4 overflow-x-auto px-6 pb-2 scrollbar-hide snap-x" style={{ WebkitOverflowScrolling: 'touch' }}>
+                        {studyingCourses.length === 0 && (
+                            <div className="text-xs text-slate-400 py-4">暂无学习中课程</div>
+                        )}
+                        {studyingCourses.map(course => {
+                            const typeConfig = {
+                                PROFESSIONAL: { label: '专业课', color: 'text-blue-600 bg-blue-50' },
+                                ELECTIVE: { label: '选修课', color: 'text-emerald-600 bg-emerald-50' },
+                                CROSS_MAJOR: { label: '公共课', color: 'text-amber-600 bg-amber-50' }
+                            };
+                            const typeInfo = typeConfig[course.type] || typeConfig.PROFESSIONAL;
+                            const updateDate = course.updatedAt 
+                                ? new Date(course.updatedAt).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) 
+                                : '未知';
+                            return (
                             <div 
                                 key={course.id}
                                 onClick={() => onCourseSelect ? onCourseSelect(course.id, 'study') : onNavigate(AppView.COURSE_DETAIL_STUDY, course.id)}
                                 className="snap-start flex-shrink-0 w-[150px] h-[90px] bg-slate-50 rounded-xl p-3 border border-slate-100 relative active:scale-95 transition-transform flex flex-col justify-between opacity-90 group"
                             >
                                 <div className="flex justify-between items-start">
-                                    <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">选修</span>
+                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${typeInfo.color}`}>{typeInfo.label}</span>
                                     <button onClick={(e) => { e.stopPropagation(); /* open menu */ }} className="text-slate-300 hover:text-slate-600 p-1 -mr-2 -mt-2 active:bg-slate-100 rounded-full">
                                         <MoreHorizontal size={14} />
                                     </button>
@@ -680,12 +874,13 @@ const Courses: React.FC<CoursesProps> = ({ onNavigate, onCourseSelect }) => {
                                 <div>
                                     <h3 className="text-xs font-bold text-slate-700 line-clamp-1">{course.name}</h3>
                                     <div className="flex justify-between items-end mt-1">
-                                        <p className="text-[9px] text-slate-400">01/20 更新</p>
+                                        <p className="text-[9px] text-slate-400">{updateDate} 更新</p>
                                         <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
                                     </div>
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             </div>

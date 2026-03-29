@@ -117,6 +117,7 @@ export interface TimeMark {
   studyRecordId: string
   timestamp: number
   type: TimeMarkType
+  content?: string  // 标记内容（直接存储）
   data?: TimeMarkData
   knowledgePointId?: string
   createdAt: string

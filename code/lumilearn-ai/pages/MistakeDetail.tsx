@@ -10,18 +10,20 @@ import type { MistakesResponse } from '../src/types/api';
 
 interface MistakeDetailProps {
   onNavigate: (view: AppView, data?: any) => void;
+  courseId?: string | null;
+  viewData?: any;
 }
 
-const MistakeDetail: React.FC<MistakeDetailProps> = ({ onNavigate }) => {
+const MistakeDetail: React.FC<MistakeDetailProps> = ({ onNavigate, courseId, viewData }) => {
   const [loading, setLoading] = useState(true);
   const [mistakesData, setMistakesData] = useState<MistakesResponse | null>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(viewData?.mistakeIndex ?? 0);
 
   useEffect(() => {
     const fetchMistakes = async () => {
       setLoading(true);
       try {
-        const response = await getMistakes();
+        const response = await getMistakes(undefined, courseId || undefined);
         if (response.success && response.data) {
           setMistakesData(response.data);
         }
@@ -32,7 +34,7 @@ const MistakeDetail: React.FC<MistakeDetailProps> = ({ onNavigate }) => {
       }
     };
     fetchMistakes();
-  }, []);
+  }, [courseId]);
 
   if (loading) {
     return (
@@ -138,10 +140,41 @@ const MistakeDetail: React.FC<MistakeDetailProps> = ({ onNavigate }) => {
             <p className="text-sm font-bold text-slate-600 mb-3">选项</p>
             <div className="space-y-2">
               {currentMistake.options.map((option, idx) => {
-                const key = Object.keys(option)[0];
-                const value = Object.values(option)[0];
-                const isUserAnswer = currentMistake.userAnswer.includes(key);
-                const isCorrect = currentMistake.correctAnswer.includes(key);
+                // 处理多种选项格式: {key: value}, {optionKey: key, optionValue: value}, 或 string
+                let key = '';
+                let value = '';
+                
+                if (typeof option === 'string') {
+                  // 格式: "A. 选项内容" 或 "A: 选项内容"
+                  const match = option.match(/^([A-Da-d])[:.、\s]\s*(.+)$/);
+                  if (match) {
+                    key = match[1].toUpperCase();
+                    value = match[2];
+                  } else {
+                    key = String.fromCharCode(65 + idx); // A, B, C...
+                    value = option;
+                  }
+                } else if (option && typeof option === 'object') {
+                  // 检查是否是 {optionKey, optionValue} 格式
+                  if ('optionKey' in option && 'optionValue' in option) {
+                    key = option.optionKey;
+                    value = option.optionValue;
+                  } else {
+                    // 格式: {A: "选项内容"}
+                    const keys = Object.keys(option);
+                    if (keys.length > 0) {
+                      key = keys[0];
+                      value = option[key];
+                    }
+                  }
+                }
+                
+                if (!key) {
+                  key = String.fromCharCode(65 + idx);
+                }
+                
+                const isUserAnswer = currentMistake.userAnswer?.toString().includes(key);
+                const isCorrect = currentMistake.correctAnswer?.toString().includes(key);
 
                 return (
                   <div

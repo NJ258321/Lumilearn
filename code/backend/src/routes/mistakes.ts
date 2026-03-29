@@ -59,9 +59,31 @@ router.get('/', [
       }
     })
 
+    // 解析 options JSON 字符串，并将对象格式转换为数组格式
+    const parsedMistakes = mistakes.map(mistake => {
+      let parsedOptions = null
+      if (mistake.options) {
+        try {
+          const opts = JSON.parse(mistake.options)
+          // 将 {A: "x", B: "y"} 转换为 [{A: "x"}, {B: "y"}] 格式
+          if (opts && typeof opts === 'object' && !Array.isArray(opts)) {
+            parsedOptions = Object.entries(opts).map(([key, value]) => ({ [key]: value }))
+          } else if (Array.isArray(opts)) {
+            parsedOptions = opts
+          }
+        } catch (e) {
+          console.error('Failed to parse options:', e)
+        }
+      }
+      return {
+        ...mistake,
+        options: parsedOptions
+      }
+    })
+
     res.json({
       success: true,
-      data: mistakes
+      data: parsedMistakes
     })
   } catch (error) {
     console.error('Error fetching mistakes:', error)
@@ -252,9 +274,30 @@ router.get('/:id', [
       return
     }
 
+    // 解析 options JSON 字符串，并将对象格式转换为数组格式
+    let parsedOptions = null
+    if (mistake.options) {
+      try {
+        const opts = JSON.parse(mistake.options)
+        // 将 {A: "x", B: "y"} 转换为 [{A: "x"}, {B: "y"}] 格式
+        if (opts && typeof opts === 'object' && !Array.isArray(opts)) {
+          parsedOptions = Object.entries(opts).map(([key, value]) => ({ [key]: value }))
+        } else if (Array.isArray(opts)) {
+          parsedOptions = opts
+        }
+      } catch (e) {
+        console.error('Failed to parse options:', e)
+      }
+    }
+
+    const parsedMistake = {
+      ...mistake,
+      options: parsedOptions
+    }
+
     res.json({
       success: true,
-      data: mistake
+      data: parsedMistake
     })
   } catch (error) {
     console.error('Error fetching mistake:', error)

@@ -192,9 +192,9 @@ const App: React.FC = () => {
       case AppView.EXAM:
         return <Exam onNavigate={navigate} examData={viewData} />;
       case AppView.MISTAKES:
-        return <Mistakes onNavigate={navigate} />;
+        return <Mistakes onNavigate={navigate} courseId={currentCourseId} />;
       case AppView.MISTAKE_DETAIL:
-        return <MistakeDetail onNavigate={navigate} />;
+        return <MistakeDetail onNavigate={navigate} courseId={currentCourseId} viewData={viewData} />;
       case AppView.EXAM_CALENDAR:
         return <ExamCalendar onBack={goBack} courseId={viewData?.courseId} />;
       case AppView.WEAK_POINTS:
