@@ -1,0 +1,51 @@
+/**
+ * Card - 卡片组件样式 - 深海科技风格
+ */
+
+.admin-card {
+  background: #1a1f26;
+  border: 1px solid #252a33;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  transition: all 300ms ease;
+}
+
+/* 悬停效果 */
+.admin-card.card-glow:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15), 0 4px 24px rgba(0, 0, 0, 0.3);
+  transform: translateY(-2px);
+}
+
+/* 卡片头部 */
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #252a33;
+  margin-bottom: 16px;
+}
+
+.card-icon {
+  font-size: 18px;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0;
+  font-family: var(--font-sans);
+}
+
+/* 卡片内容 */
+.card-content {
+  color: #94a3b8;
+}
+
+/* 无悬停效果的卡片 */
+.admin-card:not(.card-glow) {
+  cursor: default;
+}

@@ -184,25 +184,28 @@ class MinimaxService {
       5: '非常困难',
     };
 
-    const systemPrompt = `你是一位专业的出题专家，擅长根据知识点出题。你的任务是根据给定的课程名称、知识点和难度生成高质量的练习题目。
+    // 更严格的JSON格式要求
+    const systemPrompt = `你是一位专业的出题专家，擅长根据知识点出题。
 
-请严格按照以下JSON格式返回题目，不要包含任何其他内容：
+【重要】你必须严格返回以下JSON格式，不要包含任何其他内容：
 [
   {
-    "content": "题目内容",
+    "content": "题目内容（不要包含换行符或特殊字符）",
     "options": {"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"},
-    "correctAnswer": "正确答案（如：A）",
+    "correctAnswer": "A",
     "explanation": "解析内容",
-    "difficulty": 难度数值（1-5）,
-    "knowledgePoint": "所属知识点"
+    "difficulty": 3,
+    "knowledgePoint": "知识点名称"
   }
 ]
 
-注意事项：
-1. 题目内容要准确、清晰、符合学科特点
-2. 选项要具有区分度，避免过于明显的错误选项
-3. 解析要详细，说明正确选项的原因
-4. 返回valid的JSON数组格式`;
+规则：
+1. 必须返回valid JSON数组
+2. content中不要使用换行符，用空格代替
+3. 选项内容要简洁明了
+4. difficulty必须是1-5的整数
+5. 不要返回markdown代码块
+6. 不要返回任何解释性文字`;
 
     const userPrompt = `请生成${count}道${typeLabels[questionType]}题目。
 
@@ -247,25 +250,25 @@ class MinimaxService {
 
       if (jsonMatch) {
         try {
-          const questions = JSON.parse(jsonMatch[0]);
-          console.log('[Minimax] Parsed questions:', questions);
-          return questions;
-        } catch (parseError: any) {
-          console.error('[Minimax] JSON parse error:', parseError.message);
-          // 尝试修复常见的 JSON 问题
-          let fixedJson = jsonMatch[0]
-            // 处理未转义的引号
-            .replace(/(?<!\\)"(?=[^"\\]*(?:\\.[^"\\]*)*")/g, '\\"')
-            // 处理控制字符
-            .replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+          // 先做更彻底的清理
+          let jsonStr = jsonMatch[0];
+          // 移除换行符和多余空白
+          jsonStr = jsonStr.replace(/\n/g, ' ').replace(/\s+/g, ' ');
+          // 移除可能的问题字符
+          jsonStr = jsonStr.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+          // 处理中文引号
+          jsonStr = jsonStr.replace(/[""]/g, '"');
+          // 处理单引号（只在引号内部）
+          jsonStr = jsonStr.replace(/'([^']*)'/g, '"$1"');
 
-          try {
-            const questions = JSON.parse(fixedJson);
-            console.log('[Minimax] Fixed and parsed questions:', questions);
+          const questions = JSON.parse(jsonStr);
+          if (Array.isArray(questions)) {
+            console.log('[Minimax] Parsed questions:', questions.length);
             return questions;
-          } catch (fixError) {
-            console.error('[Minimax] Failed to fix JSON:', fixError);
           }
+        } catch (parseError: any) {
+          console.error('[Minimax] JSON parse error after cleanup:', parseError.message);
+          console.log('[Minimax] Failed JSON string:', jsonMatch[0].substring(0, 500));
         }
       }
 

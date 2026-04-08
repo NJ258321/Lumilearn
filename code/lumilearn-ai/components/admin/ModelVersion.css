@@ -1,0 +1,152 @@
+/**
+ * ModelVersion - 模型版本信息样式 - 深海科技风格
+ */
+
+.model-version-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 淡入动画 */
+.model-version-content.fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+  opacity: 0;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 当前版本 */
+.current-version {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px;
+  background: #0f1419;
+  border-radius: 6px;
+}
+
+.version-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.version-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #3b82f6;
+  font-family: var(--font-mono);
+}
+
+.version-course {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* 模型信息 */
+.model-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: #0f1419;
+  border-radius: 6px;
+}
+
+.info-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.info-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: #f1f5f9;
+}
+
+.info-value.accuracy {
+  color: #10b981;
+  font-family: var(--font-mono);
+}
+
+/* 版本历史 */
+.version-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  transition: background 200ms;
+}
+
+.history-item:hover {
+  background: #0f1419;
+}
+
+.history-item.current {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-dot.current {
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+}
+
+.status-dot.previous {
+  background: #64748b;
+}
+
+.status-dot.archive {
+  background: #475569;
+}
+
+.history-version {
+  font-size: 14px;
+  font-weight: 500;
+  color: #f1f5f9;
+  font-family: var(--font-mono);
+}
+
+.history-date {
+  font-size: 12px;
+  color: #64748b;
+  margin-left: auto;
+}

@@ -288,6 +288,12 @@ async function main() {
       name: '第三章：遥感图像处理',
       order: 3,
     },
+    {
+      id: '660e8400-e29b-41d4-a716-446655440103',
+      courseId: '550e8400-e29b-41d4-a716-446655440011',
+      name: '第四章：遥感图像分类',
+      order: 4,
+    },
     // 数据库原理（学习中）
     {
       id: '660e8400-e29b-41d4-a716-446655440110',
@@ -306,6 +312,12 @@ async function main() {
       courseId: '550e8400-e29b-41d4-a716-446655440010',
       name: '第三章：SQL语言',
       order: 3,
+    },
+    {
+      id: '660e8400-e29b-41d4-a716-446655440113',
+      courseId: '550e8400-e29b-41d4-a716-446655440010',
+      name: '第四章：数据库设计',
+      order: 4,
     },
     // 摄影测量学（复习中）
     {
@@ -326,6 +338,12 @@ async function main() {
       name: '第三章：数字摄影测量',
       order: 3,
     },
+    {
+      id: '660e8400-e29b-41d4-a716-446655440123',
+      courseId: '550e8400-e29b-41d4-a716-446655440012',
+      name: '第四章：遥感影像处理',
+      order: 4,
+    },
     // 概率论与数理统计（复习中）
     {
       id: '660e8400-e29b-41d4-a716-446655440130',
@@ -342,8 +360,14 @@ async function main() {
     {
       id: '660e8400-e29b-41d4-a716-446655440132',
       courseId: '550e8400-e29b-41d4-a716-446655440008',
-      name: '第三章：大数定律与中心极限定理',
+      name: '第三章：数理统计基础',
       order: 3,
+    },
+    {
+      id: '660e8400-e29b-41d4-a716-446655440133',
+      courseId: '550e8400-e29b-41d4-a716-446655440008',
+      name: '第四章：参数估计与检验',
+      order: 4,
     },
   ]
 
@@ -465,116 +489,220 @@ async function main() {
       importance: 7,
       masteryScore: 35,
     },
-    // 
+    //
     // 【本学期课程】知识点 - 大二下学期
-    // 
-    // 遥感原理与应用（学习中）
+    //
+    // 遥感原理与应用（学习中）- 增加更多知识点
     {
       id: '770e8400-e29b-41d4-a716-446655440100',
       chapterId: '660e8400-e29b-41d4-a716-446655440100',
       name: '电磁波谱与地物光谱特性',
-      status: 'STUDYING',
+      status: 'MASTERED',
       importance: 10,
-      masteryScore: 65,
+      masteryScore: 85,
     },
     {
       id: '770e8400-e29b-41d4-a716-446655440101',
       chapterId: '660e8400-e29b-41d4-a716-446655440100',
       name: '大气窗口与辐射传输',
-      status: 'STUDYING',
+      status: 'MASTERED',
       importance: 9,
-      masteryScore: 55,
+      masteryScore: 80,
     },
     {
       id: '770e8400-e29b-41d4-a716-446655440102',
-      chapterId: '660e8400-e29b-41d4-a716-446655440101',
-      name: ' Landsat与Sentinel卫星',
-      status: 'NEED_REVIEW',
-      importance: 8,
-      masteryScore: 45,
+      chapterId: '660e8400-e29b-41d4-a716-446655440100',
+      name: '热红外遥感原理',
+      status: 'MASTERED',
+      importance: 9,
+      masteryScore: 78,
     },
     {
       id: '770e8400-e29b-41d4-a716-446655440103',
+      chapterId: '660e8400-e29b-41d4-a716-446655440101',
+      name: 'Landsat与Sentinel卫星',
+      status: 'LEARNING',
+      importance: 8,
+      masteryScore: 55,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440104',
+      chapterId: '660e8400-e29b-41d4-a716-446655440101',
+      name: '高分辨率遥感卫星',
+      status: 'LEARNING',
+      importance: 8,
+      masteryScore: 50,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440105',
+      chapterId: '660e8400-e29b-41d4-a716-446655440102',
+      name: '图像几何校正',
+      status: 'NEED_REVIEW',
+      importance: 9,
+      masteryScore: 45,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440106',
       chapterId: '660e8400-e29b-41d4-a716-446655440102',
       name: '图像增强与滤波',
       status: 'WEAK',
       importance: 9,
-      masteryScore: 40,
+      masteryScore: 35,
     },
-    // 数据库原理（学习中）
+    {
+      id: '770e8400-e29b-41d4-a716-446655440107',
+      chapterId: '660e8400-e29b-41d4-a716-446655440102',
+      name: '图像融合与变换',
+      status: 'NOT_STARTED',
+      importance: 7,
+      masteryScore: 20,
+    },
+    // 数据库原理（学习中）- 增加更多知识点
     {
       id: '770e8400-e29b-41d4-a716-446655440110',
       chapterId: '660e8400-e29b-41d4-a716-446655440110',
       name: '数据模型与数据库三级模式',
-      status: 'STUDYING',
+      status: 'MASTERED',
       importance: 9,
-      masteryScore: 70,
+      masteryScore: 82,
     },
     {
       id: '770e8400-e29b-41d4-a716-446655440111',
       chapterId: '660e8400-e29b-41d4-a716-446655440111',
       name: '关系代数与关系运算',
-      status: 'STUDYING',
+      status: 'LEARNING',
       importance: 10,
       masteryScore: 60,
     },
     {
       id: '770e8400-e29b-41d4-a716-446655440112',
+      chapterId: '660e8400-e29b-41d4-a716-446655440111',
+      name: '关系规范化理论',
+      status: 'LEARNING',
+      importance: 9,
+      masteryScore: 58,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440113',
       chapterId: '660e8400-e29b-41d4-a716-446655440112',
       name: 'SQL查询与数据操作',
       status: 'NEED_REVIEW',
       importance: 10,
       masteryScore: 50,
     },
-    // 摄影测量学（复习中）- 设置一些薄弱点
+    {
+      id: '770e8400-e29b-41d4-a716-446655440114',
+      chapterId: '660e8400-e29b-41d4-a716-446655440112',
+      name: '索引与查询优化',
+      status: 'WEAK',
+      importance: 8,
+      masteryScore: 40,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440115',
+      chapterId: '660e8400-e29b-41d4-a716-446655440112',
+      name: '事务与并发控制',
+      status: 'NOT_STARTED',
+      importance: 9,
+      masteryScore: 25,
+    },
+    // 摄影测量学（复习中）- 设置合理的掌握状态
     {
       id: '770e8400-e29b-41d4-a716-446655440120',
       chapterId: '660e8400-e29b-41d4-a716-446655440120',
       name: '摄影机与摄影几何',
-      status: 'WEAK',  // 改为薄弱
-      importance: 10,
-      masteryScore: 35,  // 低于40分
-    },
-    {
-      id: '770e8400-e29b-41d4-a716-446655440121',
-      chapterId: '660e8400-e29b-41d4-a716-446655440121',
-      name: '共线方程与空间后方交会',
-      status: 'REVIEWING',
-      importance: 10,
-      masteryScore: 70,
-    },
-    {
-      id: '770e8400-e29b-41d4-a716-446655440122',
-      chapterId: '660e8400-e29b-41d4-a716-446655440122',
-      name: '影像匹配与DEM生成',
-      status: 'WEAK',  // 改为薄弱
-      importance: 9,
-      masteryScore: 30,  // 低于40分
-    },
-    // 概率论与数理统计（复习中）- 设置一些薄弱点
-    {
-      id: '770e8400-e29b-41d4-a716-446655440130',
-      chapterId: '660e8400-e29b-41d4-a716-446655440130',
-      name: '条件概率与贝叶斯公式',
-      status: 'REVIEWING',
+      status: 'MASTERED',
       importance: 10,
       masteryScore: 80,
     },
     {
-      id: '770e8400-e29b-41d4-a716-446655440131',
-      chapterId: '660e8400-e29b-41d4-a716-446655440131',
-      name: '常见分布（正态、泊松、二项）',
-      status: 'WEAK',  // 改为薄弱
+      id: '770e8400-e29b-41d4-a716-446655440121',
+      chapterId: '660e8400-e29b-41d4-a716-446655440120',
+      name: '内方位元素与外方位元素',
+      status: 'MASTERED',
+      importance: 9,
+      masteryScore: 75,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440122',
+      chapterId: '660e8400-e29b-41d4-a716-446655440121',
+      name: '共线方程与空间后方交会',
+      status: 'LEARNING',
       importance: 10,
-      masteryScore: 25,  // 低于40分
+      masteryScore: 65,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440123',
+      chapterId: '660e8400-e29b-41d4-a716-446655440121',
+      name: '空间前方交会',
+      status: 'NEED_REVIEW',
+      importance: 9,
+      masteryScore: 55,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440124',
+      chapterId: '660e8400-e29b-41d4-a716-446655440122',
+      name: '影像匹配与DEM生成',
+      status: 'WEAK',
+      importance: 9,
+      masteryScore: 35,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440125',
+      chapterId: '660e8400-e29b-41d4-a716-446655440122',
+      name: '数字高程模型构建',
+      status: 'NOT_STARTED',
+      importance: 8,
+      masteryScore: 20,
+    },
+    // 概率论与数理统计（复习中）- 设置合理的掌握状态
+    {
+      id: '770e8400-e29b-41d4-a716-446655440130',
+      chapterId: '660e8400-e29b-41d4-a716-446655440130',
+      name: '条件概率与贝叶斯公式',
+      status: 'MASTERED',
+      importance: 10,
+      masteryScore: 85,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440131',
+      chapterId: '660e8400-e29b-41d4-a716-446655440130',
+      name: '全概率公式',
+      status: 'MASTERED',
+      importance: 9,
+      masteryScore: 80,
     },
     {
       id: '770e8400-e29b-41d4-a716-446655440132',
+      chapterId: '660e8400-e29b-41d4-a716-446655440131',
+      name: '常见分布（正态、泊松、二项）',
+      status: 'LEARNING',
+      importance: 10,
+      masteryScore: 60,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440133',
+      chapterId: '660e8400-e29b-41d4-a716-446655440131',
+      name: '分布函数与概率密度',
+      status: 'NEED_REVIEW',
+      importance: 9,
+      masteryScore: 50,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440134',
       chapterId: '660e8400-e29b-41d4-a716-446655440132',
       name: '参数估计与假设检验',
-      status: 'WEAK',  // 改为薄弱
+      status: 'WEAK',
       importance: 9,
-      masteryScore: 35,  // 低于40分
+      masteryScore: 35,
+    },
+    {
+      id: '770e8400-e29b-41d4-a716-446655440135',
+      chapterId: '660e8400-e29b-41d4-a716-446655440132',
+      name: '置信区间与显著性水平',
+      status: 'NOT_STARTED',
+      importance: 8,
+      masteryScore: 25,
     },
   ]
 
@@ -842,9 +970,10 @@ async function main() {
   console.log(`  - 学习记录: ${studyRecords.length} 条`)
   console.log(`  - 时间标记: ${timeMarks.length} 个`)
   console.log('\n📝 测试用课程ID:')
-  console.log(`  - 高等数学: ${courses[0].id}`)
-  console.log(`  - 线性代数: ${courses[1].id}`)
-  console.log(`  - 大学英语: ${courses[2].id}`)
+  console.log(`  - 遥感原理与应用: 550e8400-e29b-41d4-a716-446655440011 (学习中, 约58%掌握度)`)
+  console.log(`  - 数据库原理: 550e8400-e29b-41d4-a716-446655440010 (学习中, 约47%掌握度)`)
+  console.log(`  - 摄影测量学: 550e8400-e29b-41d4-a716-446655440012 (复习中, 约42%掌握度)`)
+  console.log(`  - 概率论与数理统计: 550e8400-e29b-41d4-a716-446655440008 (复习中, 约48%掌握度)`)
 }
 
 main()

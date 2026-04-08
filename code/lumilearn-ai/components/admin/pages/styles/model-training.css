@@ -1,0 +1,493 @@
+/**
+ * ModelTraining - 模型训练页样式 (紧凑科技风)
+ */
+
+.model-training-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md, 12px);
+}
+
+.page-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text-primary, #f1f5f9);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm, 8px);
+}
+
+.page-title::before {
+  content: '';
+  width: 4px;
+  height: 20px;
+  background: linear-gradient(180deg, var(--color-primary, #3b82f6), var(--color-secondary, #6366f1));
+  border-radius: 2px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary, #f1f5f9);
+  margin: 0 0 var(--spacing-sm, 8px) 0;
+}
+
+/* 顶部区域：进度圆环 + 资源监控 */
+.top-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm, 8px);
+}
+
+.progress-ring-card,
+.resource-monitor-card {
+  background: var(--glass-bg, rgba(26, 31, 38, 0.85));
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border, rgba(59, 130, 246, 0.15));
+  border-radius: var(--radius-lg, 8px);
+  padding: var(--spacing-md, 12px);
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-ring-card::before,
+.resource-monitor-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-primary, #3b82f6), var(--color-secondary, #6366f1));
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm, 8px);
+  padding-bottom: var(--spacing-xs, 4px);
+  border-bottom: 1px solid var(--color-border, #252a33);
+}
+
+.card-header h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs, 4px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary, #f1f5f9);
+  margin: 0;
+}
+
+.task-name {
+  font-size: 11px;
+  color: var(--color-text-muted, #94a3b8);
+}
+
+/* 进度圆环 */
+.ring-container {
+  position: relative;
+  width: 100%;
+  height: 140px;
+}
+
+.ring-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.ring-value {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-text-primary, #f1f5f9);
+  font-family: var(--font-mono, monospace);
+}
+
+.ring-label {
+  font-size: 10px;
+  color: var(--color-text-muted, #94a3b8);
+}
+
+.ring-stats {
+  display: flex;
+  justify-content: space-around;
+  margin-top: var(--spacing-sm, 8px);
+  padding-top: var(--spacing-sm, 8px);
+  border-top: 1px solid var(--color-border, #252a33);
+}
+
+.ring-stats .stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.ring-stats .stat-label {
+  font-size: 10px;
+  color: var(--color-text-muted, #94a3b8);
+}
+
+.ring-stats .stat-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary, #f1f5f9);
+  font-family: var(--font-mono, monospace);
+}
+
+/* 资源监控 */
+.resource-gauges {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm, 8px);
+}
+
+.gauge-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs, 4px);
+  padding: var(--spacing-sm, 8px);
+  background: var(--color-bg-primary, #0a0e17);
+  border-radius: var(--radius-md, 6px);
+}
+
+.gauge-icon {
+  margin-bottom: 2px;
+  color: var(--color-primary, #3b82f6);
+}
+
+.gauge-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.gauge-name {
+  font-size: 11px;
+  color: var(--color-text-secondary, #94a3b8);
+}
+
+.gauge-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary, #f1f5f9);
+  font-family: var(--font-mono, monospace);
+}
+
+.gauge-bar {
+  height: 3px;
+  background: var(--color-border, #252a33);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.gauge-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* 图表区域 */
+.charts-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm, 8px);
+}
+
+.performance-radar-card,
+.training-history-card {
+  background: var(--glass-bg, rgba(26, 31, 38, 0.85));
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border, rgba(59, 130, 246, 0.15));
+  border-radius: var(--radius-lg, 8px);
+  padding: var(--spacing-md, 12px);
+}
+
+.radar-container,
+.line-chart-container {
+  width: 100%;
+  min-height: 180px;
+}
+
+/* 训练表格 */
+.training-section,
+.version-section,
+.history-section {
+  background: var(--glass-bg, rgba(26, 31, 38, 0.85));
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border, rgba(59, 130, 246, 0.15));
+  border-radius: var(--radius-lg, 8px);
+  padding: var(--spacing-md, 12px);
+}
+
+.training-table {
+  overflow: hidden;
+}
+
+.table-header {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 2fr 1fr 1fr;
+  gap: var(--spacing-sm, 8px);
+  padding: var(--spacing-xs, 4px) var(--spacing-sm, 8px);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-md, 6px);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.table-row {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 2fr 1fr 1fr;
+  gap: var(--spacing-sm, 8px);
+  padding: var(--spacing-sm, 8px);
+  border-bottom: 1px solid var(--color-border, #252a33);
+  align-items: center;
+}
+
+.table-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.col-name {
+  font-size: 13px;
+  color: var(--color-text-primary, #f1f5f9);
+  font-weight: 500;
+}
+
+.col-course {
+  font-size: 12px;
+  color: var(--color-text-secondary, #94a3b8);
+}
+
+.col-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs, 4px);
+}
+
+.progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--color-border, #252a33);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progress-fill.running {
+  background: linear-gradient(90deg, var(--color-primary, #3b82f6), var(--color-secondary, #6366f1));
+  animation: progress-flow 2s linear infinite;
+  background-size: 200% 100%;
+}
+
+.progress-fill.completed {
+  background: #10b981;
+}
+
+.progress-fill.queued {
+  background: var(--color-text-muted, #94a3b8);
+}
+
+@keyframes progress-flow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+.progress-text {
+  font-size: 11px;
+  color: var(--color-text-secondary, #94a3b8);
+  min-width: 32px;
+  font-family: var(--font-mono, monospace);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.status-badge.running {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.status-badge.completed,
+.status-badge.deployed {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.status-badge.queued {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.status-badge.archived {
+  background: rgba(100, 116, 139, 0.15);
+  color: #94a3b8;
+}
+
+.col-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid var(--color-border, #252a33);
+  border-radius: var(--radius-sm, 4px);
+  color: var(--color-text-secondary, #94a3b8);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-primary, #f1f5f9);
+}
+
+.action-btn.primary {
+  background: var(--color-primary, #3b82f6);
+  border-color: var(--color-primary, #3b82f6);
+  color: white;
+  font-size: 11px;
+  padding: 0 8px;
+  width: auto;
+}
+
+.action-btn.primary:hover {
+  background: #2563eb;
+}
+
+/* 模型版本卡片 */
+.version-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-sm, 8px);
+}
+
+.version-card {
+  padding: var(--spacing-md, 12px);
+  background: var(--color-bg-primary, #0a0e17);
+  border: 1px solid var(--color-border, #252a33);
+  border-radius: var(--radius-lg, 8px);
+  transition: all var(--transition-normal, 300ms);
+}
+
+.version-card.running {
+  border-color: var(--color-primary, #3b82f6);
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.15);
+}
+
+.version-card.deployed {
+  border-color: #10b981;
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.15);
+}
+
+.version-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm, 8px);
+}
+
+.version-number {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text-primary, #f1f5f9);
+}
+
+.version-stats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs, 4px);
+}
+
+.version-stats .stat-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.version-stats .stat-label {
+  color: var(--color-text-muted, #94a3b8);
+}
+
+.version-stats .stat-value {
+  color: var(--color-text-primary, #f1f5f9);
+  font-weight: 500;
+  font-family: var(--font-mono, monospace);
+}
+
+/* 历史记录 */
+.view-history-btn {
+  width: 100%;
+  padding: var(--spacing-sm, 8px);
+  background: transparent;
+  border: 1px dashed var(--color-border, #252a33);
+  border-radius: var(--radius-md, 6px);
+  color: var(--color-text-secondary, #94a3b8);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.view-history-btn:hover {
+  border-color: var(--color-primary, #3b82f6);
+  color: var(--color-primary, #3b82f6);
+}
+
+/* 响应式 */
+@media (max-width: 1200px) {
+  .version-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .top-section,
+  .charts-section {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .table-header,
+  .table-row {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .col-progress,
+  .col-actions {
+    display: none;
+  }
+
+  .version-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .resource-gauges {
+    grid-template-columns: 1fr;
+  }
+}

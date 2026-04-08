@@ -1,0 +1,184 @@
+/**
+ * AdminNavBar - 大屏顶部导航栏样式
+ */
+
+.admin-navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  padding: 0 var(--spacing-lg, 24px);
+  background: linear-gradient(180deg, #1a1f26 0%, #0f1419 100%);
+  border-bottom: 1px solid var(--color-border, #252a33);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+/* 品牌标识 */
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md, 16px);
+}
+
+.brand-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--color-primary, #3b82f6), var(--color-secondary, #6366f1));
+  border-radius: 8px;
+  font-weight: bold;
+  font-size: 18px;
+  color: white;
+}
+
+.brand-text {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary, #f1f5f9);
+}
+
+/* 导航菜单 */
+.navbar-items {
+  display: flex;
+  gap: var(--spacing-xs, 4px);
+}
+
+.nav-item {
+  padding: var(--spacing-sm, 8px) var(--spacing-md, 16px);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--color-text-secondary, #94a3b8);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-item:hover {
+  color: var(--color-text-primary, #f1f5f9);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-item.active {
+  color: var(--color-primary, #3b82f6);
+  background: rgba(59, 130, 246, 0.15);
+}
+
+/* 右侧操作区 */
+.navbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md, 16px);
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--color-text-secondary, #94a3b8);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+  color: var(--color-text-primary, #f1f5f9);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* 下拉菜单 */
+.settings-dropdown {
+  position: relative;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: var(--spacing-sm, 8px);
+  min-width: 160px;
+  background: var(--color-bg-secondary, #1a1f26);
+  border: 1px solid var(--color-border, #252a33);
+  border-radius: 8px;
+  padding: var(--spacing-xs, 4px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  z-index: 101;
+}
+
+.dropdown-menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm, 8px);
+  width: 100%;
+  padding: var(--spacing-sm, 8px) var(--spacing-md, 16px);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--color-text-secondary, #94a3b8);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dropdown-menu button:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-primary, #f1f5f9);
+}
+
+/* 用户信息 */
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm, 8px);
+  padding: var(--spacing-xs, 4px) var(--spacing-sm, 8px);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+}
+
+.user-avatar {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-primary, #3b82f6);
+  border-radius: 50%;
+  color: white;
+}
+
+.user-name {
+  font-size: 14px;
+  color: var(--color-text-primary, #f1f5f9);
+  font-weight: 500;
+}
+
+/* 响应式 */
+@media (max-width: 1440px) {
+  .navbar-items {
+    gap: 2px;
+  }
+
+  .nav-item {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  .brand-text {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .navbar-items {
+    display: none;
+  }
+}

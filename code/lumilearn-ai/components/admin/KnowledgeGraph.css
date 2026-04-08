@@ -1,0 +1,130 @@
+/**
+ * KnowledgeGraph - 知识图谱样式
+ */
+
+.knowledge-graph {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 450px;
+}
+
+.graph-svg {
+  background: #0f1419;
+  border-radius: 8px;
+  border: 1px solid #252a33;
+  flex: 1;
+  min-height: 400px;
+}
+
+/* 统计信息 */
+.graph-stats {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+  padding: 8px 0;
+}
+
+.graph-stats .stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.graph-stats .stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #f1f5f9;
+  font-family: var(--font-mono);
+}
+
+.graph-stats .stat-label {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.stat-divider {
+  color: #252a33;
+}
+
+/* 图例 */
+.graph-legend {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.graph-legend .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.graph-legend .legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.graph-legend .legend-name {
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: capitalize;
+}
+
+/* Tooltip */
+.graph-tooltip {
+  position: absolute;
+  padding: 8px 12px;
+  background: #1a1f26;
+  border: 1px solid #252a33;
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  pointer-events: none;
+}
+
+.tooltip-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-bottom: 4px;
+}
+
+.tooltip-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* 节点动画 */
+.nodes circle {
+  transition: all 0.2s ease;
+}
+
+.nodes circle:hover {
+  filter: brightness(1.2);
+  stroke-width: 2;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .graph-svg {
+    width: 100% !important;
+    height: 250px !important;
+  }
+
+  .graph-stats {
+    gap: 16px;
+  }
+
+  .graph-legend {
+    gap: 16px;
+  }
+}

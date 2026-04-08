@@ -1,0 +1,85 @@
+/**
+ * UserStatsCard - 用户统计卡片样式
+ */
+
+.user-stats-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 淡入动画 */
+.user-stats-content.fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+  opacity: 0;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 统计行 */
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.stat-item.main {
+  padding-bottom: 12px;
+  border-bottom: 1px solid #252a33;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #f1f5f9;
+  font-family: var(--font-mono);
+}
+
+.stat-value.positive {
+  color: #10b981;
+}
+
+.stat-rate {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* 趋势图 */
+.trend-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trend-label {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.chart-container {
+  width: 100%;
+  height: 50px;
+}

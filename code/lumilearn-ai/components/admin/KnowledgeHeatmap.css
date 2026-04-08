@@ -1,0 +1,130 @@
+/**
+ * KnowledgeHeatmap - 知识点热力图样式
+ */
+
+.knowledge-heatmap-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 淡入动画 */
+.knowledge-heatmap-content.fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+  opacity: 0;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 分布条 */
+.distribution-bar {
+  display: flex;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #0f1419;
+}
+
+.bar-segment {
+  transition: width 300ms;
+}
+
+.bar-segment.mastered {
+  background: linear-gradient(90deg, #10b981, #06b6d4);
+}
+
+.bar-segment.weak {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+
+.bar-segment.need-review {
+  background: linear-gradient(90deg, #6366f1, #3b82f6);
+}
+
+/* 图例 */
+.heatmap-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.legend-dot.mastered {
+  background: #10b981;
+}
+
+.legend-dot.weak {
+  background: #f59e0b;
+}
+
+.legend-dot.need-review {
+  background: #6366f1;
+}
+
+.legend-label {
+  font-size: 12px;
+  color: #94a3b8;
+  flex: 1;
+}
+
+.legend-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f1f5f9;
+  font-family: var(--font-mono);
+}
+
+.legend-percent {
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* 统计数据 */
+.heatmap-stats {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 12px;
+  border-top: 1px solid #252a33;
+}
+
+.heatmap-stats .stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.heatmap-stats .stat-label {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.heatmap-stats .stat-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f1f5f9;
+  font-family: var(--font-mono);
+}
+
+.heatmap-stats .stat-value.positive {
+  color: #10b981;
+}

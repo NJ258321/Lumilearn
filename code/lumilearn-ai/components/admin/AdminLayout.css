@@ -1,0 +1,22 @@
+/**
+ * AdminLayout - 大屏布局样式
+ */
+
+.admin-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: var(--color-bg-primary, #0a0e17);
+}
+
+/* 主内容区域 */
+.admin-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-lg, 24px);
+}
+
+.admin-content {
+  max-width: 1920px;
+  margin: 0 auto;
+}

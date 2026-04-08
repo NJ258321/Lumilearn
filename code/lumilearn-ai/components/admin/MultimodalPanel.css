@@ -1,0 +1,147 @@
+/**
+ * MultimodalPanel - 多模态数据面板样式
+ */
+
+.multimodal-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-height: 320px;
+}
+
+/* 统计网格 */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: #0f1419;
+  border-radius: 8px;
+  transition: all 300ms;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.15);
+}
+
+.stat-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-icon {
+  font-size: 14px;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.stat-body {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.stat-value {
+  color: #f1f5f9;
+}
+
+.stat-unit {
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* 进度条 */
+.stat-progress {
+  height: 4px;
+  background: #252a33;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.stat-progress .progress-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 300ms;
+}
+
+/* 区块标题 */
+.section-label {
+  font-size: 11px;
+  color: #64748b;
+  display: block;
+  margin-bottom: 8px;
+}
+
+/* 趋势图 */
+.trend-section {
+  padding-top: 12px;
+  border-top: 1px solid #252a33;
+}
+
+.chart-container {
+  width: 100%;
+  height: 100px;
+}
+
+/* 分布柱状图 */
+.distribution-section {
+  padding-top: 12px;
+  border-top: 1px solid #252a33;
+}
+
+.bar-chart-container {
+  width: 100%;
+  height: 80px;
+}
+
+/* 自定义Tooltip */
+.custom-tooltip {
+  padding: 8px;
+  background: #1a1f26;
+  border: 1px solid #252a33;
+  border-radius: 8px;
+}
+
+.custom-tooltip .tooltip-label {
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 2px;
+}
+
+.custom-tooltip .tooltip-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f1f5f9;
+  font-family: var(--font-mono);
+}
+
+/* 响应式 */
+@media (max-width: 1024px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}

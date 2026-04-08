@@ -1,0 +1,176 @@
+/**
+ * Header - 顶部标题栏样式 - 深海科技风格
+ */
+
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 80px;
+  padding: 0 24px;
+  background: #0f1419;
+  border: 1px solid #252a33;
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  animation: fadeIn 0.4s ease-out forwards;
+  opacity: 0;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 左侧区域 */
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.logo-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo-icon {
+  font-size: 28px;
+  filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.5));
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.4)); }
+  50% { filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.7)); }
+}
+
+.header-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0;
+  font-family: var(--font-display);
+  letter-spacing: 1px;
+}
+
+.header-subtitle {
+  font-size: 14px;
+  color: #64748b;
+}
+
+/* 中间区域 */
+.header-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.datetime-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.date-text {
+  font-size: 16px;
+  color: #94a3b8;
+}
+
+.time-text {
+  font-size: 22px;
+  font-weight: 600;
+  color: #f1f5f9;
+  font-family: var(--font-mono);
+  letter-spacing: 2px;
+}
+
+/* 右侧区域 */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-icon {
+  font-size: 16px;
+}
+
+.status-label {
+  font-size: 14px;
+  color: #64748b;
+}
+
+.status-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.status-value.small {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.update-time {
+  padding: 4px 8px;
+  background: #1a1f26;
+  border-radius: 6px;
+}
+
+.status-divider {
+  color: #252a33;
+}
+
+/* 健康指示器 */
+.health-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 8px currentColor;
+  animation: blink 2s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* 响应式 */
+@media (max-width: 1200px) {
+  .header-subtitle {
+    display: none;
+  }
+
+  .header-title {
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-header {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .header-center {
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
+  }
+}

@@ -1,0 +1,102 @@
+/**
+ * Overview - 总览页样式
+ */
+
+.overview-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg, 24px);
+}
+
+.overview-page.loading,
+.overview-page.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  color: var(--color-text-secondary, #94a3b8);
+}
+
+/* 三栏布局 */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr 320px;
+  gap: var(--spacing-lg, 24px);
+  min-height: calc(100vh - 200px);
+}
+
+.sidebar-left,
+.sidebar-right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md, 16px);
+}
+
+.main-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg, 24px);
+  min-width: 0;
+}
+
+/* 加载动画 */
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--color-border, #252a33);
+  border-top-color: var(--color-primary, #3b82f6);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 响应式 */
+@media (max-width: 1600px) {
+  .dashboard-grid {
+    grid-template-columns: 240px 1fr 300px;
+  }
+}
+
+@media (max-width: 1440px) {
+  .dashboard-grid {
+    grid-template-columns: 200px 1fr 280px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sidebar-right {
+    display: none;
+  }
+
+  .sidebar-left {
+    grid-column: 1;
+  }
+
+  .main-content {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar-left,
+  .main-content,
+  .sidebar-right {
+    grid-column: 1;
+  }
+
+  .sidebar-right {
+    display: flex;
+  }
+}
