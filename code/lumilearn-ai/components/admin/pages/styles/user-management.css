@@ -534,6 +534,13 @@
   overflow: hidden;
 }
 
+.map-annotation {
+  text-align: center;
+  font-size: 12px;
+  color: #64748b;
+  padding: 8px 0 4px;
+}
+
 .map-loading {
   display: flex;
   align-items: center;
