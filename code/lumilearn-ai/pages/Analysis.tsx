@@ -20,7 +20,7 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
   const [activeTab, setActiveTab] = useState<'weak' | 'mastery' | 'correlation' | 'sequence' | 'bottleneck' | 'evaluation' | 'efficiency' | 'compare'>('weak');
 
   // 本地状态管理当前选中的课程名称和ID，初始化为高等数学或传入的课程
-  const [selectedCourseName, setSelectedCourseName] = useState("高等数学");
+  const [selectedCourseName, setSelectedCourseName] = useState("概率论与数理统计");
   const [selectedCourseId, setSelectedCourseId] = useState<string>(currentCourseId || '');
 
   // P4 - Analysis Data State
@@ -233,8 +233,13 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
         const response = await getCourseList();
         if (response.success && response.data) {
           setCourses(response.data);
-          // Set initial course if not provided
-          if (!currentCourseId && response.data.length > 0) {
+          // 优先选择"概率论与数理统计"课程，如果没有则选第一个
+          const targetCourse = response.data.find(c => c.name === '概率论与数理统计');
+          if (targetCourse) {
+            setSelectedCourseName(targetCourse.name);
+            setSelectedCourseId(targetCourse.id);
+          } else if (!currentCourseId && response.data.length > 0) {
+            // Set initial course if not provided
             setSelectedCourseName(response.data[0].name);
             setSelectedCourseId(response.data[0].id);
           } else if (currentCourseId) {
@@ -266,8 +271,9 @@ const Analysis: React.FC<AnalysisProps> = ({ onNavigate, currentCourseId, onCour
     }
   }, [selectedCourseId, currentCourseId, fetchRecommendations, activeTab, fetchKnowledgeMastery]);
 
-  // 过滤课程列表 - 使用真实的 courses
+  // 过滤课程列表 - 只显示学习中或复习中的课程
   const filteredCourses = courses.filter(c =>
+    (c.status === 'STUDYING' || c.status === 'REVIEWING') &&
     c.name.toLowerCase().includes(searchText.toLowerCase())
   );
 

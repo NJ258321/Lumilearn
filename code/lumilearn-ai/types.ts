@@ -195,6 +195,8 @@ export enum AppView {
   WEAK_POINTS = 'WEAK_POINTS',
   // 课程管理
   COURSE_MANAGER = 'COURSE_MANAGER',
+  // 管理员大屏
+  ADMIN_DASHBOARD = 'ADMIN_DASHBOARD',
 }
 
 export interface Task {

@@ -1,0 +1,147 @@
+/**
+ * 管理员大屏 - 页面样式
+ * Admin Dashboard Page Styles
+ */
+
+.admin-dashboard {
+  width: 100%;
+  min-height: 100vh;
+  background-color: #0a0e17;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.dashboard-container {
+  max-width: 1920px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-height: calc(100vh - 120px);
+}
+
+.dashboard-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  color: #94a3b8;
+  gap: 12px;
+}
+
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid #252a33;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 主布局 - 调整列宽使中间更宽 */
+.dashboard-main {
+  display: grid;
+  grid-template-columns: 280px 1fr 320px;
+  gap: 24px;
+  min-height: calc(100vh - 200px);
+}
+
+/* 侧边栏 */
+.sidebar-left,
+.sidebar-right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 中央区域 */
+.main-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+
+/* 响应式断点 */
+@media (max-width: 1600px) {
+  .dashboard-main {
+    grid-template-columns: 260px 1fr 300px;
+  }
+}
+
+@media (max-width: 1440px) {
+  .dashboard-main {
+    grid-template-columns: 240px 1fr 280px;
+  }
+
+  .sidebar-left,
+  .sidebar-right {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .dashboard-main {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sidebar-right {
+    display: none;
+  }
+
+  .sidebar-left {
+    grid-column: 1;
+  }
+
+  .main-content {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboard-main {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar-left,
+  .main-content,
+  .sidebar-right {
+    grid-column: 1;
+  }
+
+  .sidebar-right {
+    display: flex;
+  }
+}
+
+/* 底部区域高度 */
+.dashboard-footer {
+  height: 60px;
+}
+
+/* 头部区域样式 - 兼容旧代码 */
+.dashboard-header {
+  padding: 12px 24px;
+  background-color: #0f1419;
+  color: #f1f5f9;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+
+.dashboard-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.dashboard-header p {
+  margin: 4px 0 0;
+  color: #94a3b8;
+  font-size: 0.875rem;
+}

@@ -22,6 +22,8 @@ import Mistakes from './pages/Mistakes';
 import MistakeDetail from './pages/MistakeDetail';
 import ExamCalendar from './pages/ExamCalendar';
 import WeakPoints from './pages/WeakPoints';
+import AdminDashboard from './pages/AdminDashboard';
+import ProtectedAdminRoute from './components/admin/ProtectedAdminRoute';
 import { AppView } from './types';
 import { isLoggedIn, debugLogin, setToken, setUser, getToken } from './src/api/auth';
 
@@ -199,6 +201,12 @@ const App: React.FC = () => {
         return <ExamCalendar onBack={goBack} courseId={viewData?.courseId} />;
       case AppView.WEAK_POINTS:
         return <WeakPoints onNavigate={navigate} currentCourseId={currentCourseId} />;
+      case AppView.ADMIN_DASHBOARD:
+        return (
+          <ProtectedAdminRoute>
+            <AdminDashboard />
+          </ProtectedAdminRoute>
+        );
       default:
         return <Dashboard onNavigate={navigate} />;
     }
