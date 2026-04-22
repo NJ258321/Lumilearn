@@ -1,44 +1,25 @@
 /**
  * 中国地图数据
- * 使用阿里云DataV GeoJSON数据
- * https://geo.datav.aliyun.com/areas_v2/bound/
+ * 使用本地GeoJSON文件
  */
 
 import * as echarts from 'echarts';
-
-// 阿里云DataV GeoJSON API地址
-const CHINA_GEOJSON_URL = 'https://geo.datav.aliyun.com/areas_v2/bound/100000_full.json';
+import chinaGeoJson from '../../../china.json';
 
 // 缓存GeoJSON数据
-let chinaGeoJson: any = null;
+let chinaGeoJsonData: any = null;
 
 /**
- * 获取中国地图GeoJSON数据
+ * 获取中国地图GeoJSON数据（本地文件）
  */
 export const fetchChinaGeoJson = async (): Promise<any> => {
-  if (chinaGeoJson) {
-    return chinaGeoJson;
+  if (chinaGeoJsonData) {
+    return chinaGeoJsonData;
   }
 
-  try {
-    const response = await fetch(CHINA_GEOJSON_URL);
-    if (!response.ok) {
-      throw new Error('Failed to fetch China GeoJSON');
-    }
-    chinaGeoJson = await response.json();
-
-    // 调试：打印GeoJSON中的省份名称
-    if (chinaGeoJson.features && chinaGeoJson.features.length > 0) {
-      const names = chinaGeoJson.features.map((f: any) => f.properties.name);
-      console.log('GeoJSON中的省份名称:', names.slice(0, 10));
-    }
-
-    console.log('中国地图GeoJSON加载成功');
-    return chinaGeoJson;
-  } catch (error) {
-    console.error('加载中国地图失败:', error);
-    throw error;
-  }
+  // 使用本地JSON文件
+  chinaGeoJsonData = chinaGeoJson;
+  return chinaGeoJsonData;
 };
 
 /**

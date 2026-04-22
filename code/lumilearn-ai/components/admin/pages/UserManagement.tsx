@@ -413,6 +413,7 @@ export const UserManagement: React.FC = () => {
               <div className="map-loading">正在加载地图数据...</div>
             )}
           </div>
+          <div className="map-annotation">审图号：GS(2024)0650</div>
         </section>
 
         {/* 右侧边栏 */}
